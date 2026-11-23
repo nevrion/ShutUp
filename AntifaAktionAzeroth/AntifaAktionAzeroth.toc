@@ -1,0 +1,9 @@
+## Interface: 16001
+## Title: |cffe53935Antifaschiste Aktion Azeroth|r
+## Notes: Setzt Mitglieder bestimmter Gilden automatisch auf Ignore und blendet ihren Chat aus. Befehl: /aaa
+## Notes-deDE: Setzt Mitglieder bestimmter Gilden automatisch auf Ignore und blendet ihren Chat aus. Befehl: /aaa
+## Author: Pierre
+## Version: 0.1.0
+## SavedVariables: AAADB
+
+Core.lua
