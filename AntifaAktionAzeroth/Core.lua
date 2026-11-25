@@ -35,12 +35,36 @@ local function normGuild(s)
   return s:lower()
 end
 
--- "Name-Realm" -> "name" (Vergleichsschlüssel)
+-- Charnamen in WoW Forever bestehen aus Vor- und Nachname. UnitName(unit) liefert dort nur den VORNAMEN; der volle Name steht in
+-- GetUnitName(unit, true) als "Vorname Nachname-Forever" (Realm hinten), Chat-Absender haben dieselbe Form. Wir arbeiten immer mit
+-- dem vollen Namen ohne Realm ("Vorname Nachname"); ein Eintrag nur mit Vornamen ist mehrdeutig und wird weder ignoriert noch gespeichert.
+local function stripRealm(n)
+  n = (n or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  return n:match("^[^-]+") or n
+end
+
+local function isFullName(n)
+  return n and n:find(" ", 1, true) ~= nil
+end
+
+-- Voller Name einer Einheit: der längste Name, den das Spiel kennt und der mit dem Vornamen beginnt
+local function fullNameOf(unit)
+  local short = (UnitName(unit)) or ""
+  if short == "" then return nil end
+  local best = short
+  local function consider(n)
+    n = type(n) == "string" and stripRealm(n) or nil
+    if n and #n > #best and n:lower():sub(1, #short) == short:lower() then best = n end
+  end
+  if GetUnitName then consider(GetUnitName(unit, true)) end
+  if UnitFullName then consider((UnitFullName(unit))) end
+  return best
+end
+
+-- "Vorname Nachname-Realm" -> "vorname nachname" (Vergleichsschlüssel)
 local function nameKey(name)
   if not name then return nil end
-  if Ambiguate then name = Ambiguate(name, "none") end
-  name = name:gsub("%-.*$", "")
-  return name:lower()
+  return (stripRealm(name):lower():gsub("%s+", " "))
 end
 
 local function guildSet()
@@ -81,9 +105,11 @@ local function isMuted(name)
 end
 
 local function mute(name, guild, quiet)
+  name = stripRealm(name)
   local k = nameKey(name)
   if not k or k == "" then return false end
-  if k == nameKey(UnitName("player")) then return false end
+  if not isFullName(name) then return false end -- nur Vorname: mehrdeutig, kein Ignorieren
+  if k == nameKey(fullNameOf("player")) then return false end
   if db.muted[k] then return false end
   db.muted[k] = { name = name, guild = guild, t = time() }
   local viaGame = blizzIgnore(name)
@@ -104,9 +130,8 @@ local function checkUnit(unit)
   if not guild then return end
   local hit = guildSet()[normGuild(guild)]
   if not hit then return end
-  local name, realm = UnitName(unit)
-  if realm and realm ~= "" then name = name .. "-" .. realm end
-  mute(name, hit)
+  local name = fullNameOf(unit)
+  if name then mute(name, hit) end
 end
 
 ---------------------------------------------------------------------------
@@ -200,6 +225,7 @@ end
 
 function AAA.Scan()
   if running then say("Es läuft schon eine Suche.") return end
+  if db.whoBlocked then say("Das Spiel blockiert die /who-Suche für Addons (siehe frühere Meldung). Nur die passive Erkennung ist aktiv.") return end
   queue = {}
   for _, g in ipairs(db.guilds) do table.insert(queue, { guild = g }) end
   if #queue == 0 then say("Keine Gilden in der Liste.") return end
@@ -236,7 +262,8 @@ local function help()
   print("  /aaa scan - Gilden per /who absuchen und Treffer ignorieren")
   print("  /aaa liste - Gilden und Zahl der eingetragenen Spieler")
   print("  /aaa gilde + <Name> / gilde - <Name> - Gilde hinzufügen / entfernen")
-  print("  /aaa frei <Spielername> - einen Spieler wieder freigeben")
+  print("  /aaa frei <Vorname Nachname> - einen Spieler wieder freigeben (Namensanfang genügt)")
+  print("  /aaa ziel - Diagnose: wie der Client Vor- und Nachname des Ziels (sonst deines Chars) liefert")
   print("  /aaa chat - Chat-Filter an/aus (jetzt " .. onOff(db.hideChat) .. ")")
   print("  /aaa spiel - Spiel-Ignore-Liste mitbenutzen (jetzt " .. onOff(db.useBlizzIgnore) .. ")")
   print("  /aaa auto - Suche bei der Anmeldung (jetzt " .. onOff(db.autoScan) .. ")")
@@ -269,6 +296,12 @@ local function slash(msg)
     end
   elseif cmd == "frei" then
     local k = nameKey(rest)
+    if k and not db.muted[k] then
+      -- eindeutiger Namensanfang genügt
+      local hit, n = nil, 0
+      for key in pairs(db.muted) do if key:sub(1, #k) == k then hit, n = key, n + 1 end end
+      if n == 1 then k = hit end
+    end
     if k and db.muted[k] then
       local full = db.muted[k].name
       db.muted[k] = nil
@@ -277,6 +310,15 @@ local function slash(msg)
     else
       say("Unbekannter Spieler.")
     end
+  elseif cmd == "ich" or cmd == "ziel" then
+    -- Diagnose: wie liefert der Client Vor- und Nachname? (Ziel, sonst du selbst)
+    local unit = (UnitExists("target") and UnitIsPlayer("target")) and "target" or "player"
+    say("Einheit: " .. unit)
+    print("  UnitName: " .. tostring((UnitName(unit))))
+    if GetUnitName then print("  GetUnitName(.., true): " .. tostring(GetUnitName(unit, true))) end
+    if UnitFullName then print("  UnitFullName: " .. tostring((UnitFullName(unit)))) end
+    print("  Gilde: " .. tostring((GetGuildInfo(unit))))
+    print("  Addon benutzt: " .. tostring(fullNameOf(unit)) .. " (Schlüssel: " .. tostring(nameKey(fullNameOf(unit))) .. ")")
   elseif cmd == "chat" then
     db.hideChat = not db.hideChat say("Chat-Filter: " .. onOff(db.hideChat))
   elseif cmd == "spiel" then
@@ -305,6 +347,7 @@ f:RegisterEvent("PLAYER_TARGET_CHANGED")
 f:RegisterEvent("NAME_PLATE_UNIT_ADDED")
 f:RegisterEvent("GROUP_ROSTER_UPDATE")
 f:RegisterEvent("WHO_LIST_UPDATE")
+pcall(f.RegisterEvent, f, "ADDON_ACTION_BLOCKED")
 
 f:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" then
@@ -313,6 +356,12 @@ f:SetScript("OnEvent", function(_, event, arg1)
     db = AAADB
     if db.guilds == nil then db.guilds = { unpack(DEFAULT_GUILDS) } end
     db.muted = db.muted or {}
+    -- Einträge aus 0.1.0 mit nur dem Vornamen sind mehrdeutig: aus der eigenen Liste entfernen (Spiel-Ignore-Liste bleibt unberührt)
+    local legacy = 0
+    for k, e in pairs(db.muted) do
+      if not isFullName(e.name or k) then db.muted[k] = nil; legacy = legacy + 1 end
+    end
+    if legacy > 0 then db.legacyRemoved = (db.legacyRemoved or 0) + legacy end
     if db.hideChat == nil then db.hideChat = true end
     if db.useBlizzIgnore == nil then db.useBlizzIgnore = true end
     if db.autoScan == nil then db.autoScan = true end
@@ -321,6 +370,10 @@ f:SetScript("OnEvent", function(_, event, arg1)
     -- Eintraege aus der eigenen Liste nachtragen, falls die Spiel-Liste inzwischen Luft hat
     -- (Ignore-Liste wird erst kurz nach dem Login geladen)
     C_Timer.After(10, function()
+      if (db.legacyRemoved or 0) > 0 then
+        say(string.format("%d alte Einträge nur mit Vornamen entfernt (zu mehrdeutig). In der Spiel-Ignore-Liste habe ich nichts verändert: bitte dort prüfen, ob falsche Vornamen stehen.", db.legacyRemoved))
+        db.legacyRemoved = nil
+      end
       if db.useBlizzIgnore and C_FriendList and C_FriendList.IsIgnored then
         for _, e in pairs(db.muted) do
           if numBlizzIgnores() >= 50 then break end
@@ -328,7 +381,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
         end
       end
     end)
-    if db.autoScan then
+    if db.autoScan and not db.whoBlocked then
       local last = db.lastScan or 0
       if time() - last > 12 * 3600 then
         C_Timer.After(30, function() if not running then AAA.Scan() end end)
@@ -346,5 +399,12 @@ f:SetScript("OnEvent", function(_, event, arg1)
     for i = 1, n do checkUnit(prefix .. i) end
   elseif event == "WHO_LIST_UPDATE" then
     onWhoResult()
+  elseif event == "ADDON_ACTION_BLOCKED" then
+    -- Das Spiel erlaubt die /who-Abfrage aus einem Addon nicht: Suche abschalten, passive Erkennung bleibt
+    if arg1 == ADDON and running then
+      db.whoBlocked, db.autoScan = true, false
+      running, current, queue, scanStats = false, nil, {}, nil
+      say("Das Spiel blockiert die /who-Suche für Addons. Die Suche ist abgeschaltet; es bleibt die Erkennung über Maus, Ziel, Namensplakette und Gruppe.")
+    end
   end
 end)

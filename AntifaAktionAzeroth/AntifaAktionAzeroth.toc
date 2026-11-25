@@ -4,7 +4,7 @@
 ## Notes-deDE: Setzt Mitglieder bestimmter Gilden automatisch auf Ignore und blendet ihren Chat aus. Befehl: /aaa
 ## Author: Pierre
 ## IconTexture: Interface\AddOns\AntifaAktionAzeroth\media\icon.tga
-## Version: 0.1.0
+## Version: 0.2.0
 ## SavedVariables: AAADB
 
 Core.lua

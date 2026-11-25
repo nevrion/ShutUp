@@ -28,7 +28,8 @@ WoW kann keine Mitglieder einer fremden Gilde auflisten. Das Addon sammelt desha
 | `/aaa liste` | Gilden und Zahl der eingetragenen Spieler anzeigen |
 | `/aaa gilde + Name` | Gilde hinzufügen |
 | `/aaa gilde - Name` | Gilde entfernen |
-| `/aaa frei Spielername` | Spieler wieder freigeben |
+| `/aaa frei Vorname Nachname` | Spieler wieder freigeben (der Anfang des Namens genügt) |
+| `/aaa ziel` | Diagnose: zeigt, wie der Client Vor- und Nachname deines Ziels (sonst deines Chars) liefert |
 | `/aaa chat` | Chat-Filter an/aus |
 | `/aaa spiel` | Spiel-Ignore-Liste mitbenutzen an/aus |
 | `/aaa auto` | Suche bei der Anmeldung an/aus |
@@ -36,9 +37,13 @@ WoW kann keine Mitglieder einer fremden Gilde auflisten. Das Addon sammelt desha
 
 Bei den Gildennamen ist Groß- und Kleinschreibung egal, und ü, ä, ö gelten als u, a, o.
 
+## Namen in WoW Forever
+
+Charaktere haben in Forever Vor- und Nachnamen. Das Addon arbeitet deshalb immer mit dem **vollen Namen** ("Vorname Nachname", ohne Realm) und ignoriert nie einen Spieler nur anhand des Vornamens, damit nicht Unbeteiligte mit demselben Vornamen betroffen sind. Das Spiel selbst liefert den vollen Namen nur über `GetUnitName(unit, true)`; `/aaa ziel` zeigt, was dein Client dazu meldet.
+
 ## Bekannte Einschränkungen
 
-- **Im Spiel noch nicht getestet.** Offen ist vor allem, ob WoW Forever die `/who`-Abfrage aus einem Addon erlaubt und ob die Gildenspalte im Ergebnis gefüllt ist. Wenn nicht, bleibt der passive Weg (Mouseover, Ziel, Gruppe).
+- **Im Spiel noch nicht getestet** (Version 0.2.0 stellt die Namensbehandlung auf Vor- und Nachname um). Offen ist vor allem, ob WoW Forever die `/who`-Abfrage aus einem Addon erlaubt und ob die Gildenspalte im Ergebnis gefüllt ist. Wenn nicht, bleibt der passive Weg (Mouseover, Ziel, Gruppe).
 - Wer seine Gilde wechselt, bleibt in der Liste, bis du ihn mit `/aaa frei` freigibst.
 - Das Addon kennt nur Spieler, die es gesehen oder per `/who` gefunden hat.
 
