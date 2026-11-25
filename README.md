@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.png" alt="Antifaschiste Aktion Azeroth" width="160"></p>
+
 # Antifaschiste Aktion Azeroth
 
 Ein Addon für **WoW Forever** (Interface 16001), das Mitglieder bestimmter Gilden automatisch auf Ignore setzt und ihren Chat ausblendet. Standardmäßig sind das die Gilden **"Alternative für Durotar"** und **"Alternative für Azeroth"**. Weitere Gilden lassen sich im Spiel hinzufügen.
