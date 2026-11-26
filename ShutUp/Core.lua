@@ -1,19 +1,24 @@
--- Antifaschiste Aktion Azeroth
--- Setzt Mitglieder bestimmter Gilden automatisch auf Ignore.
+-- ShutUp!
+-- Allgemeines Ignore-Addon, accountweit (gilt für alle Charaktere, SavedVariables AAADB).
+-- Du trägst einzelne Spieler (/shutup + Vorname Nachname) oder ganze Gilden (/shutup gilde + Name) von Hand ein.
+-- Es gibt keine voreingetragenen Gilden mehr (bis 0.2.0 waren es zwei feste).
 --
 -- WoW bietet keine Abfrage "alle Mitglieder einer fremden Gilde". Das Addon sammelt deshalb auf drei Wegen:
 --   1. Passiv: jeder Spieler, den du per Maus, Ziel, Namensplakette oder Gruppe "siehst" (GetGuildInfo).
---   2. Aktiv: /who g-"Gildenname" (Befehl /aaa scan, optional einmal pro Anmeldung), bei mehr als 50 Treffern
+--   2. Aktiv: /who g-"Gildenname" (Befehl /shutup scan, optional einmal pro Anmeldung), bei mehr als 50 Treffern
 --      wird nach Stufenbereichen geteilt.
 --   3. Chat: wer schon in der eigenen Liste steht, wird im Chat ausgeblendet, auch wenn die Ignore-Liste
 --      des Spiels voll ist (Limit des Spiels: 50 Einträge).
 
 local ADDON = ...
 local AAA = {}
-_G.AntifaAktionAzeroth = AAA
+_G.ShutUp = AAA
 
-local PREFIX = "|cffe53935[AAA]|r "
-local DEFAULT_GUILDS = { "Alternative für Durotar", "Alternative für Azeroth" }
+local PREFIX = "|cffe53935[ShutUp!]|r "
+-- Bis 0.2.0 voreingetragen; wird beim ersten Start von 0.3.0 aus der Gildenliste entfernt (siehe ADDON_LOADED)
+local OLD_DEFAULT_GUILDS = { "Alternative für Durotar", "Alternative für Azeroth" }
+local DB_VERSION = 3
+local MANUAL = "manuell"
 local MAX_LEVEL = 90
 local WHO_LIMIT = 50
 local WHO_INTERVAL = 6 -- Sekunden zwischen /who-Abfragen (das Spiel drosselt)
@@ -79,7 +84,7 @@ local function countKeys(t) local n = 0 for _ in pairs(t) do n = n + 1 end retur
 -- Eigene Liste + Spiel-Ignore
 ---------------------------------------------------------------------------
 
--- db.muted[schluessel] = { name = "Vollname", guild = "Gilde", t = Zeit }
+-- db.muted[schluessel] = { name = "Vollname", guild = "Gilde" oder "manuell", t = Zeit }
 local function numBlizzIgnores()
   if C_FriendList and C_FriendList.GetNumIgnores then return C_FriendList.GetNumIgnores() end
   if GetNumIgnores then return GetNumIgnores() end
@@ -104,19 +109,44 @@ local function isMuted(name)
   return k and db.muted[k] ~= nil
 end
 
+-- Rückgabe: true = neu eingetragen, sonst false + Grund ("vorname", "ich", "schon", "leer")
 local function mute(name, guild, quiet)
   name = stripRealm(name)
   local k = nameKey(name)
-  if not k or k == "" then return false end
-  if not isFullName(name) then return false end -- nur Vorname: mehrdeutig, kein Ignorieren
-  if k == nameKey(fullNameOf("player")) then return false end
-  if db.muted[k] then return false end
-  db.muted[k] = { name = name, guild = guild, t = time() }
+  if not k or k == "" then return false, "leer" end
+  if not isFullName(name) then return false, "vorname" end -- nur Vorname: mehrdeutig, kein Ignorieren
+  if k == nameKey(fullNameOf("player")) then return false, "ich" end
+  if db.muted[k] then return false, "schon" end
+  db.muted[k] = { name = name, guild = guild or MANUAL, t = time() }
   local viaGame = blizzIgnore(name)
   if db.announce and not quiet then
-    say(string.format("%s (%s) wird ignoriert%s.", name, guild or "?", viaGame and "" or " (nur Chat-Filter)"))
+    say(string.format("%s (%s) wird ignoriert%s.", name, guild or MANUAL, viaGame and "" or " (nur Chat-Filter)"))
   end
   return true
+end
+
+-- Spieler freigeben (Schlüssel oder eindeutiger Namensanfang). Rückgabe: voller Name oder nil
+local function unmute(query)
+  local k = nameKey(query)
+  if not k or k == "" then return nil end
+  if not db.muted[k] then
+    local hit, n = nil, 0
+    for key in pairs(db.muted) do if key:sub(1, #k) == k then hit, n = key, n + 1 end end
+    if n == 1 then k = hit end
+  end
+  local e = db.muted[k]
+  if not e then return nil end
+  db.muted[k] = nil
+  if C_FriendList and C_FriendList.DelIgnore then C_FriendList.DelIgnore(e.name) elseif DelIgnore then DelIgnore(e.name) end
+  return e.name
+end
+
+-- Name aus dem Befehl, sonst aus dem Ziel
+local function nameOrTarget(rest)
+  if rest and rest ~= "" then return rest end
+  if UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player") then
+    return fullNameOf("target")
+  end
 end
 
 ---------------------------------------------------------------------------
@@ -228,7 +258,7 @@ function AAA.Scan()
   if db.whoBlocked then say("Das Spiel blockiert die /who-Suche für Addons (siehe frühere Meldung). Nur die passive Erkennung ist aktiv.") return end
   queue = {}
   for _, g in ipairs(db.guilds) do table.insert(queue, { guild = g }) end
-  if #queue == 0 then say("Keine Gilden in der Liste.") return end
+  if #queue == 0 then say("Keine Gilden in der Liste. Eine Gilde trägst du mit /shutup gilde + Name ein.") return end
   scanStats = { new = 0, queries = 0 }
   running = true
   db.lastScan = time()
@@ -259,15 +289,17 @@ local function onOff(v) return v and "|cff66bb6aan|r" or "|cffef5350aus|r" end
 
 local function help()
   say("Befehle:")
-  print("  /aaa scan - Gilden per /who absuchen und Treffer ignorieren")
-  print("  /aaa liste - Gilden und Zahl der eingetragenen Spieler")
-  print("  /aaa gilde + <Name> / gilde - <Name> - Gilde hinzufügen / entfernen")
-  print("  /aaa frei <Vorname Nachname> - einen Spieler wieder freigeben (Namensanfang genügt)")
-  print("  /aaa ziel - Diagnose: wie der Client Vor- und Nachname des Ziels (sonst deines Chars) liefert")
-  print("  /aaa chat - Chat-Filter an/aus (jetzt " .. onOff(db.hideChat) .. ")")
-  print("  /aaa spiel - Spiel-Ignore-Liste mitbenutzen (jetzt " .. onOff(db.useBlizzIgnore) .. ")")
-  print("  /aaa auto - Suche bei der Anmeldung (jetzt " .. onOff(db.autoScan) .. ")")
-  print("  /aaa meldung - Meldungen bei neuen Einträgen (jetzt " .. onOff(db.announce) .. ")")
+  print("  /shutup + <Vorname Nachname> - Spieler ignorieren (ohne Namen: dein Ziel)")
+  print("  /shutup - <Vorname Nachname> - Spieler wieder freigeben (Namensanfang genügt, ohne Namen: dein Ziel)")
+  print("  /shutup gilde + <Name> - ganze Gilde ignorieren (ohne Namen: Gilde deines Ziels)")
+  print("  /shutup gilde - <Name> - Gilde entfernen und ihre Mitglieder freigeben")
+  print("  /shutup liste [spieler] - Gilden und Zahl der Einträge, mit \"spieler\" alle Namen")
+  print("  /shutup scan - Gilden der Liste per /who absuchen und Treffer ignorieren")
+  print("  /shutup ziel - Diagnose: wie der Client Vor- und Nachname des Ziels (sonst deines Chars) liefert")
+  print("  /shutup chat - Chat-Filter an/aus (jetzt " .. onOff(db.hideChat) .. ")")
+  print("  /shutup spiel - Spiel-Ignore-Liste mitbenutzen (jetzt " .. onOff(db.useBlizzIgnore) .. ")")
+  print("  /shutup auto - Suche bei der Anmeldung (jetzt " .. onOff(db.autoScan) .. ")")
+  print("  /shutup meldung - Meldungen bei neuen Einträgen (jetzt " .. onOff(db.announce) .. ")")
 end
 
 local function slash(msg)
@@ -276,39 +308,63 @@ local function slash(msg)
   cmd = cmd and cmd:lower() or ""
   if cmd == "scan" or cmd == "suche" then
     AAA.Scan()
+  elseif cmd == "+" or cmd == "spieler+" or cmd == "ignore" then
+    local name = nameOrTarget(rest)
+    if not name then say("Nutzung: /shutup + Vorname Nachname (oder Spieler anvisieren und /shutup +)") return end
+    local ok, why = mute(name, MANUAL)
+    if not ok then
+      if why == "vorname" then say("Bitte den vollen Namen angeben (Vorname Nachname), nur der Vorname ist mehrdeutig.")
+      elseif why == "ich" then say("Du kannst dich nicht selbst ignorieren.")
+      elseif why == "schon" then say(stripRealm(name) .. " steht schon auf der Liste.") end
+    end
+  elseif cmd == "-" or cmd == "frei" or cmd == "spieler-" then
+    local name = nameOrTarget(rest)
+    local full = name and unmute(name)
+    if full then
+      say(full .. " ist wieder frei." .. (db.guilds[1] and " Gehört der Spieler zu einer Gilde der Liste, wird er beim nächsten Sehen oder Suchen erneut eingetragen." or ""))
+    else
+      say("Unbekannter Spieler.")
+    end
   elseif cmd == "liste" or cmd == "list" or cmd == "status" then
-    local perGuild = {}
-    for _, e in pairs(db.muted) do perGuild[e.guild or "?"] = (perGuild[e.guild or "?"] or 0) + 1 end
+    local perGuild, manual = {}, 0
+    for _, e in pairs(db.muted) do
+      if e.guild == MANUAL or not e.guild then manual = manual + 1 else perGuild[e.guild] = (perGuild[e.guild] or 0) + 1 end
+    end
     say(string.format("%d Spieler eingetragen, %d/50 Plätze der Spiel-Ignore-Liste belegt.", countKeys(db.muted), numBlizzIgnores()))
-    for _, g in ipairs(db.guilds) do print(string.format("  %s: %d", g, perGuild[g] or 0)) end
+    print(string.format("  Einzeln eingetragen: %d", manual))
+    if #db.guilds == 0 then print("  Keine Gilden eingetragen (/shutup gilde + Name).") end
+    for _, g in ipairs(db.guilds) do print(string.format("  Gilde %s: %d", g, perGuild[g] or 0)) end
+    if rest:lower() == "spieler" then
+      local names = {}
+      for _, e in pairs(db.muted) do names[#names + 1] = string.format("%s (%s)", e.name, e.guild or MANUAL) end
+      table.sort(names)
+      for _, n in ipairs(names) do print("  " .. n) end
+    end
   elseif cmd == "gilde" then
-    local op, name = rest:match("^([%+%-])%s*(.+)$")
-    if not op then say('Nutzung: /aaa gilde + Name  oder  /aaa gilde - Name') return end
+    local op, name = rest:match("^([%+%-])%s*(.-)$")
+    if not op then say('Nutzung: /shutup gilde + Name  oder  /shutup gilde - Name') return end
+    if name == "" then
+      -- Gilde des Ziels
+      if UnitExists("target") and UnitIsPlayer("target") then name = (GetGuildInfo("target")) or "" end
+      if name == "" then say("Kein Gildenname angegeben und das Ziel hat keine Gilde.") return end
+    end
     if op == "+" then
       for _, g in ipairs(db.guilds) do if normGuild(g) == normGuild(name) then say("Die Gilde ist schon in der Liste.") return end end
       table.insert(db.guilds, name)
-      say("Gilde hinzugefügt: " .. name)
+      say("Gilde hinzugefügt: " .. name .. ". Mitglieder werden beim Sehen oder mit /shutup scan eingetragen.")
     else
       for i, g in ipairs(db.guilds) do
-        if normGuild(g) == normGuild(name) then table.remove(db.guilds, i) say("Gilde entfernt: " .. g) return end
+        if normGuild(g) == normGuild(name) then
+          table.remove(db.guilds, i)
+          local freed = 0
+          for key, e in pairs(db.muted) do
+            if e.guild and normGuild(e.guild) == normGuild(g) then unmute(key) freed = freed + 1 end
+          end
+          say(string.format("Gilde entfernt: %s (%d Spieler freigegeben).", g, freed))
+          return
+        end
       end
       say("Diese Gilde steht nicht in der Liste.")
-    end
-  elseif cmd == "frei" then
-    local k = nameKey(rest)
-    if k and not db.muted[k] then
-      -- eindeutiger Namensanfang genügt
-      local hit, n = nil, 0
-      for key in pairs(db.muted) do if key:sub(1, #k) == k then hit, n = key, n + 1 end end
-      if n == 1 then k = hit end
-    end
-    if k and db.muted[k] then
-      local full = db.muted[k].name
-      db.muted[k] = nil
-      if C_FriendList and C_FriendList.DelIgnore then C_FriendList.DelIgnore(full) elseif DelIgnore then DelIgnore(full) end
-      say(full .. " ist wieder frei. Beim nächsten Sehen oder Suchen wird der Spieler erneut eingetragen, solange die Gilde in der Liste steht.")
-    else
-      say("Unbekannter Spieler.")
     end
   elseif cmd == "ich" or cmd == "ziel" then
     -- Diagnose: wie liefert der Client Vor- und Nachname? (Ziel, sonst du selbst)
@@ -332,8 +388,8 @@ local function slash(msg)
   end
 end
 
-SLASH_AAA1 = "/aaa"
-SlashCmdList["AAA"] = slash
+SLASH_SHUTUP1 = "/shutup"
+SlashCmdList["SHUTUP"] = slash
 
 ---------------------------------------------------------------------------
 -- Ereignisse
@@ -352,10 +408,21 @@ pcall(f.RegisterEvent, f, "ADDON_ACTION_BLOCKED")
 f:SetScript("OnEvent", function(_, event, arg1)
   if event == "ADDON_LOADED" then
     if arg1 ~= ADDON then return end
-    AAADB = AAADB or {}
-    db = AAADB
-    if db.guilds == nil then db.guilds = { unpack(DEFAULT_GUILDS) } end
+    -- ShutUpDB; Altbestand aus AntifaAktionAzeroth (AAADB) wird übernommen, falls die Datei kopiert wurde
+    ShutUpDB = ShutUpDB or AAADB or {}
+    db = ShutUpDB
+    db.guilds = db.guilds or {}
     db.muted = db.muted or {}
+    -- 0.3.0: die zwei früher fest voreingetragenen Gilden raus. Bereits eingetragene Spieler bleiben auf der Liste
+    -- (mit /shutup - freigeben), nur neue Treffer über diese Gilden gibt es nicht mehr. Wer sie will, trägt sie wieder von Hand ein.
+    if (db.ver or 0) < DB_VERSION then
+      local old = {}
+      for _, g in ipairs(OLD_DEFAULT_GUILDS) do old[normGuild(g)] = true end
+      for i = #db.guilds, 1, -1 do
+        if old[normGuild(db.guilds[i])] then table.remove(db.guilds, i) end
+      end
+      db.ver = DB_VERSION
+    end
     -- Einträge aus 0.1.0 mit nur dem Vornamen sind mehrdeutig: aus der eigenen Liste entfernen (Spiel-Ignore-Liste bleibt unberührt)
     local legacy = 0
     for k, e in pairs(db.muted) do
@@ -381,7 +448,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
         end
       end
     end)
-    if db.autoScan and not db.whoBlocked then
+    if db.autoScan and not db.whoBlocked and #db.guilds > 0 then
       local last = db.lastScan or 0
       if time() - last > 12 * 3600 then
         C_Timer.After(30, function() if not running then AAA.Scan() end end)
