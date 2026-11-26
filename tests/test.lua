@@ -21,7 +21,7 @@ function UnitIsUnit(a, b) return a == b end
 function GetNumGroupMembers() return 0 end
 function IsInRaid() return false end
 ShutUpDB = { muted = { anna = { name = "Anna", guild = "Alt" } } } -- Altlast aus 0.1.0 (nur Vorname)
-local f = assert(loadfile("ShutUp/Core.lua"))
+local f = assert(loadfile("Core.lua"))
 f("ShutUp")
 local on = handlers.OnEvent
 on(nil, "ADDON_LOADED", "ShutUp")

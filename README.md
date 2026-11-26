@@ -2,17 +2,21 @@
 
 # ShutUp!
 
+**Deutsch** · [English](#english)
+
+*Früher "Antifaschiste Aktion Azeroth". Befehl jetzt `/shutup`.*
+
 Ein allgemeines Ignore-Addon für **WoW Forever** (Interface 16001). Du trägst einzelne Spieler oder ganze Gilden von Hand ein, ShutUp! setzt sie auf Ignore und blendet ihren Chat aus. Die Liste gilt **für alle deine Charaktere** (accountweit). Es gibt keine voreingetragenen Gilden.
 
 Das Addon wirkt nur auf deinem Client. Niemand wird benachrichtigt.
 
 ## Installation
 
-1. Zip aus dem [neuesten Release](../../releases/latest) herunterladen.
+1. Zip aus dem [neuesten Release](../../releases/latest) herunterladen (oder über CurseForge/WoWUp installieren).
 2. Den Ordner `ShutUp` in den AddOns-Ordner von WoW Forever kopieren (`Interface/AddOns/`).
 3. Spiel starten, im Charakterauswahl-Bildschirm unter "AddOns" prüfen, dass es aktiviert ist.
 
-Kommst du von der Vorversion "Antifaschiste Aktion Azeroth": den alten Ordner `AntifaAktionAzeroth` löschen. Deine alte Liste liegt in `WTF/Account/<Konto>/SavedVariables/AntifaAktionAzeroth.lua`; kopierst du diese Datei nach `ShutUp.lua` (gleicher Ordner), übernimmt ShutUp! sie beim ersten Start. Die zwei früher fest eingetragenen Gilden entfernt es dabei aus der Gildenliste, die schon eingetragenen Spieler bleiben.
+Kommst du von der Vorversion "Antifaschiste Aktion Azeroth": den alten Ordner `AntifaAktionAzeroth` löschen. Über WoWUp oder die CurseForge-App geht es per "Von URL installieren" mit der Repo-Adresse bzw. über die CurseForge-Suche nach "ShutUp!". Deine alte Liste liegt in `WTF/Account/<Konto>/SavedVariables/AntifaAktionAzeroth.lua`; kopierst du diese Datei nach `ShutUp.lua` (gleicher Ordner), übernimmt ShutUp! sie beim ersten Start. Die zwei früher fest eingetragenen Gilden entfernt es dabei aus der Gildenliste, die schon eingetragenen Spieler bleiben.
 
 ## Befehle
 
@@ -50,3 +54,44 @@ Charaktere haben in Forever Vor- und Nachnamen. ShutUp! arbeitet immer mit dem *
 ## Fehler melden
 
 Bitte als Issue hier im Repo. Hilfreich ist die Ausgabe von `/console scriptErrors 1`, wenn eine Lua-Fehlermeldung erscheint.
+
+---
+
+## English
+
+**A general ignore addon for WoW Forever** (interface 16001). You add single players or whole guilds by hand, ShutUp! puts them on ignore and hides their chat. The list is **shared by all your characters** (account-wide). No guilds are pre-filled. It only affects your own client, nobody is notified.
+
+*Formerly "Antifaschiste Aktion Azeroth". The command is now `/shutup`.*
+
+### Installation
+Copy the `ShutUp` folder to `Interface/AddOns/` (or install with the CurseForge app / WoWUp, game version Forever). Coming from the old version? Delete the folder `AntifaAktionAzeroth`. To carry your old list over, copy `WTF/Account/<account>/SavedVariables/AntifaAktionAzeroth.lua` to `ShutUp.lua` in the same folder. The two guilds that used to be hard-wired are removed from the guild list on first start, players already on the list stay.
+
+### Commands
+| Command | Effect |
+|---|---|
+| `/shutup + First Last` | ignore a player (no name: your target) |
+| `/shutup - First Last` | free a player again (the start of the name is enough, no name: your target) |
+| `/shutup gilde + Name` | ignore a whole guild (no name: your target's guild) |
+| `/shutup gilde - Name` | remove a guild and free its members |
+| `/shutup liste` | guilds and number of entries; `/shutup liste spieler` shows all names |
+| `/shutup scan` | search the listed guilds with `/who` |
+| `/shutup ziel` | diagnostic: how the client reports your target's first and last name |
+| `/shutup chat` / `spiel` / `auto` / `meldung` | switch chat filter / game ignore list / login guild search / messages on or off |
+
+Guild names are case-insensitive, and ü, ä, ö count as u, a, o.
+
+### How it works
+- **Single players:** on the list at once and, while there is room, also in the game's own ignore list (game limit: 50 entries). Beyond that the chat filter keeps hiding them (say, yell, whispers, channels, party, raid, guild).
+- **Whole guilds:** WoW cannot list the members of a foreign guild. ShutUp! collects them passively (everyone you see by mouseover, target, nameplate or group is checked for their guild) and with `/shutup scan` (`/who g-"Guild"`, split by level range above 50 results, once per login automatically).
+- **Names in WoW Forever:** characters have first and last names. ShutUp! always works with the **full name** (without realm) and never ignores by first name alone, so unrelated players with the same first name are not hit.
+
+### Known limitations
+- Whether WoW Forever allows the `/who` search from an addon, and whether the guild column is filled, is untested. If not, passive detection still works.
+- Someone who changes guild stays on the list until you free them with `/shutup -`.
+- ShutUp! only knows players it has seen or found with `/who`.
+
+### Reporting bugs
+Please open an issue in this repo. The output of `/console scriptErrors 1` helps when a Lua error shows up.
+
+License: MIT
+Lizenz: MIT

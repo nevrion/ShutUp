@@ -1,0 +1,11 @@
+package-as: ShutUp
+
+manual-changelog:
+  filename: CHANGELOG.md
+  markup-type: markdown
+
+ignore:
+  - README.md
+  - .github
+  - docs
+  - tests
