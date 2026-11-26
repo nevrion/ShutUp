@@ -1,12 +1,13 @@
 ## Interface: 16001
 ## Title: |cffe53935ShutUp!|r
-## Notes: One ignore list for all your characters: add single players or whole guilds by hand, their chat is hidden. Command: /shutup
-## Notes-deDE: Eine Ignore-Liste für alle deine Charaktere: einzelne Spieler oder ganze Gilden von Hand eintragen, ihr Chat wird ausgeblendet. Befehl: /shutup
+## Notes: One ignore list for all your characters: add players or whole guilds, hide their chat, auto-block spam, decline guild invites. Window: /shutup
+## Notes-deDE: Eine Ignore-Liste für alle Charaktere: Spieler oder ganze Gilden eintragen, Chat ausblenden, Spam automatisch blocken, Gildeneinladungen ablehnen. Fenster: /shutup
 ## Author: nevrion
-## Version: 0.3.0
+## Version: 0.4.0
 ## IconTexture: Interface\AddOns\ShutUp\media\icon.tga
 ## X-License: MIT
 ## X-Website: https://github.com/nevrion/ShutUp
 ## SavedVariables: ShutUpDB, AAADB
 
 Core.lua
+UI.lua

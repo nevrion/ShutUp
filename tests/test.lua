@@ -59,4 +59,59 @@ SlashCmdList.SHUTUP("gilde - testgilde")
 assert(#ShutUpDB.guilds == 0)
 SlashCmdList.SHUTUP("- bob")
 assert(ShutUpDB.muted["bob tester"] == nil)
+
+-- 0.4.0: Spam-Erkennung
+local function say_(ev, msg, sender, chan, guid) return filters[1](nil, ev, msg, sender, nil, chan, nil, nil, nil, nil, chan, nil, nil, guid) end
+local SPAMTXT = "Verkaufe billig Gold bei www.beispiel-gold.de jetzt zugreifen!"
+assert(ShutUpDB.spamOn == true and ShutUpDB.inviteOn == false)
+assert(not say_("CHAT_MSG_SAY", SPAMTXT, "Gold Seller-Forever"))
+assert(not say_("CHAT_MSG_SAY", SPAMTXT .. " 123", "Gold Seller-Forever"), "Zahlen werden normalisiert, zweiter Treffer noch nicht")
+assert(say_("CHAT_MSG_SAY", SPAMTXT, "Gold Seller-Forever"), "dritter Treffer: ausgeblendet")
+local e = ShutUpDB.muted["gold seller"]
+assert(e and e.kind == "spam" and e.guild == "Spam" and e.sample, "Spammer als spam eingetragen")
+assert(SlashCmdList.SHUTUP and ShutUp.KindOf(e) == "spam")
+for i = 1, 5 do say_("CHAT_MSG_CHANNEL", SPAMTXT, "Handel Typ-Forever", "2. Handel - Stadt") end
+assert(ShutUpDB.muted["handel typ"] == nil, "Handelskanal wird nie gezählt")
+for i = 1, 5 do say_("CHAT_MSG_SAY", SPAMTXT, "Kurz Freund-Forever", nil, "friendguid") end
+assert(ShutUpDB.muted["kurz freund"] ~= nil, "ohne Freundesprüfung wird er eingetragen")
+ShutUpDB.muted["kurz freund"] = nil
+C_FriendList.IsFriend = function(g) return g == "friendguid" end
+for i = 1, 5 do say_("CHAT_MSG_SAY", SPAMTXT, "Kurz Freund-Forever", nil, "friendguid") end
+assert(ShutUpDB.muted["kurz freund"] == nil, "Freunde werden nie als Spam eingetragen")
+for i = 1, 5 do say_("CHAT_MSG_SAY", "ok gut", "Kurz Text-Forever") end
+assert(ShutUpDB.muted["kurz text"] == nil, "zu kurze Texte zählen nicht")
+for i = 1, 5 do say_("CHAT_MSG_PARTY", SPAMTXT, "Gruppe Typ-Forever") end
+assert(ShutUpDB.muted["gruppe typ"] == nil, "Gruppenchat wird nie gezählt")
+-- Ablauf nach Tagen
+ShutUpDB.muted["gold seller"].t = os.time() - 8 * 86400
+ShutUpDB.muted["alter hase"] = { name = "Alter Hase", guild = "manuell", kind = "manual", t = os.time() - 80 * 86400 }
+on(nil, "ADDON_LOADED", "ShutUp")
+assert(ShutUpDB.muted["gold seller"] == nil, "Spam läuft nach 7 Tagen ab")
+assert(ShutUpDB.muted["alter hase"], "manuelle Einträge laufen nie ab")
+-- Bot-Welle
+ShutUpDB.spamWave = true
+for _, nm in ipairs({ "Bot Eins", "Bot Zwei", "Bot Drei", "Bot Vier" }) do say_("CHAT_MSG_SAY", SPAMTXT .. " welle", nm .. "-Forever") end
+assert(ShutUpDB.muted["bot eins"] and ShutUpDB.muted["bot vier"], "Bot-Welle: alle vier eingetragen")
+-- Gildeneinladung / Satzung (Gruppen nie)
+local declined, closed = 0, 0
+function DeclineGuildInvite() declined = declined + 1 end
+function StaticPopup_Hide() end
+function ClosePetition() closed = closed + 1 end
+local PET = { "guild", "Titel", "", 9, "Wer Ander", false }
+function GetPetitionInfo() return unpack(PET) end
+on(nil, "GUILD_INVITE_REQUEST", "Wer Ander", "Gilde X")
+assert(declined == 0, "Standard: aus")
+ShutUpDB.inviteOn = true
+on(nil, "GUILD_INVITE_REQUEST", "Wer Ander", "Gilde X")
+assert(declined == 1, "Einladung abgelehnt")
+on(nil, "PETITION_SHOW")
+assert(closed == 1, "fremde Satzung geschlossen")
+PET[6] = true
+on(nil, "PETITION_SHOW")
+assert(closed == 1, "eigene Satzung bleibt")
+ShutUpDB.inviteMute = true
+on(nil, "GUILD_INVITE_REQUEST", "Wer Ander", "Gilde X")
+assert(ShutUpDB.muted["wer ander"].kind == "invite", "Einlader auf der Liste")
+-- Gruppeneinladung wird nie angefasst: kein Handler dafür
+assert(handlers.OnEvent ~= nil)
 print("SHUTUP-TEST OK")

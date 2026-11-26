@@ -1,7 +1,8 @@
 -- ShutUp!
--- Allgemeines Ignore-Addon, accountweit (gilt für alle Charaktere, SavedVariables AAADB).
+-- Allgemeines Ignore-Addon, accountweit (gilt für alle Charaktere, SavedVariables ShutUpDB).
 -- Du trägst einzelne Spieler (/shutup + Vorname Nachname) oder ganze Gilden (/shutup gilde + Name) von Hand ein.
 -- Es gibt keine voreingetragenen Gilden mehr (bis 0.2.0 waren es zwei feste).
+-- 0.4.0: Oberfläche (UI.lua), Gildeneinladungen/-satzungen ablehnen (nie Gruppen), Spam automatisch eintragen.
 --
 -- WoW bietet keine Abfrage "alle Mitglieder einer fremden Gilde". Das Addon sammelt deshalb auf drei Wegen:
 --   1. Passiv: jeder Spieler, den du per Maus, Ziel, Namensplakette oder Gruppe "siehst" (GetGuildInfo).
@@ -19,11 +20,14 @@ local PREFIX = "|cffe53935[ShutUp!]|r "
 local OLD_DEFAULT_GUILDS = { "Alternative für Durotar", "Alternative für Azeroth" }
 local DB_VERSION = 4
 local MANUAL = "manuell"
+local SPAM, INVITE = "Spam", "Einladung"
 local MAX_LEVEL = 90
 local WHO_LIMIT = 50
 local WHO_INTERVAL = 6 -- Sekunden zwischen /who-Abfragen (das Spiel drosselt)
 
 local db
+
+local function changed() if AAA.OnChange then AAA.OnChange() end end
 
 ---------------------------------------------------------------------------
 -- Hilfen
@@ -109,20 +113,30 @@ local function isMuted(name)
   return k and db.muted[k] ~= nil
 end
 
+-- Art eines Eintrags: "manual", "guild", "spam" oder "invite" (ältere Einträge ohne kind: aus dem Grund abgeleitet)
+local function kindOf(e)
+  if e.kind then return e.kind end
+  return (not e.guild or e.guild == MANUAL) and "manual" or "guild"
+end
+
 -- Rückgabe: true = neu eingetragen, sonst false + Grund ("vorname", "ich", "schon", "leer")
-local function mute(name, guild, quiet)
+-- reason = Gildenname, MANUAL, SPAM oder INVITE; sample = Beispieltext bei Spam
+local function mute(name, reason, quiet, kind, sample)
   name = stripRealm(name)
   local k = nameKey(name)
   if not k or k == "" then return false, "leer" end
   if not isFullName(name) then return false, "vorname" end -- nur Vorname: mehrdeutig, kein Ignorieren
   if k == nameKey(fullNameOf("player")) then return false, "ich" end
   if db.muted[k] then return false, "schon" end
+  reason = reason or MANUAL
+  kind = kind or ((reason == MANUAL) and "manual" or "guild")
   local viaGame = blizzIgnore(name)
   -- viaGame merken: nur was wir selbst in die Spiel-Liste gesetzt haben, nehmen wir beim Freigeben wieder heraus
-  db.muted[k] = { name = name, guild = guild or MANUAL, t = time(), viaGame = viaGame or nil }
+  db.muted[k] = { name = name, guild = reason, kind = kind, t = time(), viaGame = viaGame or nil, sample = sample }
   if db.announce and not quiet then
-    say(string.format("%s (%s) wird ignoriert%s.", name, guild or MANUAL, viaGame and "" or " (nur Chat-Filter)"))
+    say(string.format("%s (%s) wird ignoriert%s.", name, reason, viaGame and "" or " (nur Chat-Filter)"))
   end
+  changed()
   return true
 end
 
@@ -138,6 +152,7 @@ local function unmute(query)
   local e = db.muted[k]
   if not e then return nil end
   db.muted[k] = nil
+  changed()
   if e.viaGame then
     if C_FriendList and C_FriendList.DelIgnore then C_FriendList.DelIgnore(e.name) elseif DelIgnore then DelIgnore(e.name) end
   end
@@ -150,6 +165,205 @@ local function nameOrTarget(rest)
   if UnitExists("target") and UnitIsPlayer("target") and not UnitIsUnit("target", "player") then
     return fullNameOf("target")
   end
+end
+
+-- Gilde eintragen/entfernen (name leer: Gilde des Ziels)
+local function guildOrTarget(name)
+  name = (name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+  if name == "" and UnitExists("target") and UnitIsPlayer("target") then name = (GetGuildInfo("target")) or "" end
+  return name
+end
+
+function AAA.AddGuild(name)
+  name = guildOrTarget(name)
+  if name == "" then say("Kein Gildenname angegeben und das Ziel hat keine Gilde.") return false end
+  for _, g in ipairs(db.guilds) do if normGuild(g) == normGuild(name) then say("Die Gilde ist schon in der Liste.") return false end end
+  table.insert(db.guilds, name)
+  say("Gilde hinzugefügt: " .. name .. ". Mitglieder werden beim Sehen oder mit /shutup scan eingetragen.")
+  changed()
+  return true
+end
+
+function AAA.RemoveGuild(name)
+  name = guildOrTarget(name)
+  for i, g in ipairs(db.guilds) do
+    if normGuild(g) == normGuild(name) then
+      table.remove(db.guilds, i)
+      local freed = 0
+      for key, e in pairs(db.muted) do
+        if kindOf(e) == "guild" and e.guild and normGuild(e.guild) == normGuild(g) then unmute(key) freed = freed + 1 end
+      end
+      say(string.format("Gilde entfernt: %s (%d Spieler freigegeben).", g, freed))
+      changed()
+      return true
+    end
+  end
+  say("Diese Gilde steht nicht in der Liste.")
+  return false
+end
+
+---------------------------------------------------------------------------
+-- Bekannte Personen (Freunde, Gilde, Gruppe) werden nie automatisch ignoriert und dürfen Gildeneinladungen schicken
+---------------------------------------------------------------------------
+
+local function sameChar(a, b)
+  if not a or not b or a == "" or b == "" then return false end
+  return a == b or a:sub(1, #b + 1) == b .. " " or b:sub(1, #a + 1) == a .. " "
+end
+
+local function isFriendName(name)
+  local k = nameKey(name)
+  if not k or k == "" then return false end
+  if C_FriendList and C_FriendList.GetNumFriends and C_FriendList.GetFriendInfoByIndex then
+    for i = 1, (C_FriendList.GetNumFriends() or 0) do
+      local info = C_FriendList.GetFriendInfoByIndex(i)
+      if info and info.name and sameChar(nameKey(info.name), k) then return true end
+    end
+  end
+  if C_BattleNet and C_BattleNet.GetFriendAccountInfo and BNGetNumFriends then
+    for i = 1, (BNGetNumFriends() or 0) do
+      local ok, acc = pcall(C_BattleNet.GetFriendAccountInfo, i)
+      local ga = ok and acc and acc.gameAccountInfo
+      if ga and ga.characterName and sameChar(nameKey(ga.characterName), k) then return true end
+    end
+  end
+  return false
+end
+
+local function isKnown(name, guid)
+  if not name then return false end
+  if guid and guid ~= "" then
+    if C_FriendList and C_FriendList.IsFriend and pcall(C_FriendList.IsFriend, guid) and C_FriendList.IsFriend(guid) then return true end
+    if IsGuildMember and pcall(IsGuildMember, guid) and IsGuildMember(guid) then return true end
+  end
+  for _, fname in ipairs({ "UnitIsInMyGuild", "UnitInParty", "UnitInRaid" }) do
+    local fn = _G[fname]
+    if fn then
+      local ok, r = pcall(fn, name)
+      if ok and r then return true end
+    end
+  end
+  return isFriendName(name)
+end
+
+---------------------------------------------------------------------------
+-- Spam-Erkennung: derselbe Text mehrfach in kurzer Zeit -> Absender automatisch auf die Liste
+---------------------------------------------------------------------------
+
+local SPAM_EVENTS = { CHAT_MSG_SAY = true, CHAT_MSG_YELL = true, CHAT_MSG_WHISPER = true, CHAT_MSG_CHANNEL = true }
+-- Kanäle, in denen Wiederholungen normal sind (Handel, Gruppensuche), werden nie gezählt
+local SKIP_CHANNELS = { "handel", "trade", "gruppensuche", "lookingforgroup", "suche nach gruppe", "looking for group" }
+local spamLog, waveLog = {}, {}
+
+local function normText(msg)
+  msg = msg:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1"):gsub("|T.-|t", "")
+  msg = msg:lower():gsub("%d", ""):gsub("[%p%s]", "")
+  return msg
+end
+
+local function skipChannel(...)
+  for i = 1, select("#", ...) do
+    local c = select(i, ...)
+    if type(c) == "string" then
+      c = c:lower()
+      for _, w in ipairs(SKIP_CHANNELS) do if c:find(w, 1, true) then return true end end
+    end
+  end
+  return false
+end
+
+local function nowT() return GetTime and GetTime() or time() end
+
+local function spamHit(name, text, guid)
+  if isKnown(name, guid) then return false end
+  local sample = text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""):gsub("|H.-|h(.-)|h", "%1")
+  if #sample > 70 then sample = sample:sub(1, 70) .. "..." end
+  local ok = mute(name, SPAM, true, "spam", sample)
+  if ok then say(string.format('Spam erkannt: %s wird ignoriert ("%s"). Freigeben: /shutup - %s', stripRealm(name), sample, stripRealm(name))) end
+  return ok
+end
+
+local function spamCheck(event, msg, sender, channelName, baseName, guid)
+  if not db.spamOn or not SPAM_EVENTS[event] or type(msg) ~= "string" or not sender then return false end
+  local name = stripRealm(sender)
+  if not isFullName(name) then return false end
+  if event == "CHAT_MSG_CHANNEL" and skipChannel(channelName, baseName) then return false end
+  local k = nameKey(name)
+  if k == nameKey(fullNameOf("player")) then return false end
+  local norm = normText(msg)
+  if #norm < (db.spamMinLen or 15) then return false end
+  local now, window = nowT(), db.spamWindow or 120
+  -- Wiederholungen desselben Absenders
+  local per = spamLog[k]
+  if not per then per = {} spamLog[k] = per end
+  local fresh = {}
+  for _, t in ipairs(per[norm] or {}) do if now - t <= window then fresh[#fresh + 1] = t end end
+  fresh[#fresh + 1] = now
+  per[norm] = fresh
+  if #fresh >= (db.spamCount or 3) then
+    spamLog[k] = nil
+    return spamHit(name, msg, guid)
+  end
+  -- Bot-Welle: derselbe Text von mehreren verschiedenen Absendern
+  if db.spamWave then
+    local w = waveLog[norm] or {}
+    local keep, senders, n = {}, {}, 0
+    for _, e in ipairs(w) do
+      if now - e.t <= window then keep[#keep + 1] = e if not senders[e.key] then senders[e.key] = e.name n = n + 1 end end
+    end
+    keep[#keep + 1] = { t = now, key = k, name = name }
+    if not senders[k] then senders[k] = name n = n + 1 end
+    waveLog[norm] = keep
+    if n >= (db.waveSenders or 4) then
+      waveLog[norm] = nil
+      local hit = false
+      for _, nm in pairs(senders) do if spamHit(nm, msg, nil) then hit = true end end
+      return hit
+    end
+  end
+  return false
+end
+
+local function cleanupSpam()
+  local now, window = nowT(), db and db.spamWindow or 120
+  for k, per in pairs(spamLog) do
+    for norm, list in pairs(per) do
+      if #list == 0 or now - list[#list] > window then per[norm] = nil end
+    end
+    if next(per) == nil then spamLog[k] = nil end
+  end
+  for norm, w in pairs(waveLog) do
+    if #w == 0 or now - w[#w].t > window then waveLog[norm] = nil end
+  end
+end
+
+---------------------------------------------------------------------------
+-- Gildeneinladungen und Gildensatzungen ablehnen (nie Gruppen oder Schlachtzüge)
+---------------------------------------------------------------------------
+
+local function shouldDecline(who)
+  if not db.inviteOn then return false end
+  if who and isMuted(who) then return true end
+  if db.inviteOnlyUnknown and who and isKnown(who) then return false end
+  return true
+end
+
+local function onGuildInvite(inviter, guildName)
+  if not shouldDecline(inviter) then return end
+  if DeclineGuildInvite then DeclineGuildInvite() end
+  if StaticPopup_Hide then StaticPopup_Hide("GUILD_INVITE") end
+  say(string.format("Gildeneinladung von %s%s abgelehnt.", tostring(inviter or "?"), guildName and (" (" .. guildName .. ")") or ""))
+  if db.inviteMute and inviter then mute(inviter, INVITE, true, "invite") end
+end
+
+local function onPetition()
+  if not db.inviteOn or not GetPetitionInfo then return end
+  local ok, _, title, _, _, originator, isOriginator = pcall(GetPetitionInfo)
+  if not ok or isOriginator then return end -- eigene Satzung (Gilde gründen) bleibt unberührt
+  if originator and not shouldDecline(originator) then return end
+  if ClosePetition then ClosePetition() end
+  say(string.format("Gildensatzung%s von %s nicht angezeigt.", title and (' "' .. title .. '"') or "", tostring(originator or "?")))
+  if db.inviteMute and originator then mute(originator, INVITE, true, "invite") end
 end
 
 ---------------------------------------------------------------------------
@@ -273,8 +487,10 @@ end
 -- 3. Chat-Filter
 ---------------------------------------------------------------------------
 
-local function chatFilter(_, _, _, sender)
-  if db and db.hideChat and sender and isMuted(sender) then return true end
+local function chatFilter(_, event, msg, sender, _, channelName, _, _, _, _, baseName, _, _, guid)
+  if not db or not sender then return end
+  if db.hideChat and isMuted(sender) then return true end
+  if spamCheck(event, msg, sender, channelName, baseName, guid) then return true end
 end
 
 local CHAT_EVENTS = {
@@ -291,7 +507,7 @@ for _, ev in ipairs(CHAT_EVENTS) do ChatFrame_AddMessageEventFilter(ev, chatFilt
 local function onOff(v) return v and "|cff66bb6aan|r" or "|cffef5350aus|r" end
 
 local function help()
-  say("Befehle:")
+  say("Befehle (ohne Befehl öffnet sich das Fenster):")
   print("  /shutup + <Vorname Nachname> - Spieler ignorieren (ohne Namen: dein Ziel)")
   print("  /shutup - <Vorname Nachname> - Spieler wieder freigeben (Namensanfang genügt, ohne Namen: dein Ziel)")
   print("  /shutup gilde + <Name> - ganze Gilde ignorieren (ohne Namen: Gilde deines Ziels)")
@@ -300,8 +516,10 @@ local function help()
   print("  /shutup scan - Gilden der Liste per /who absuchen und Treffer ignorieren")
   print("  /shutup ziel - Diagnose: wie der Client Vor- und Nachname des Ziels (sonst deines Chars) liefert")
   print("  /shutup chat - Chat-Filter an/aus (jetzt " .. onOff(db.hideChat) .. ")")
-  print("  /shutup spiel - zusätzlich in die Spiel-Ignore-Liste eintragen, blockt auch Einladungen/Handel (jetzt " .. onOff(db.useBlizzIgnore) .. ")")
-  print("  /shutup auto - Suche bei der Anmeldung (jetzt " .. onOff(db.autoScan) .. ")")
+  print("  /shutup spiel - zusätzlich in die Spiel-Ignore-Liste eintragen (jetzt " .. onOff(db.useBlizzIgnore) .. ")")
+  print("  /shutup gildeneinladung - Gildeneinladungen und -satzungen ablehnen (jetzt " .. onOff(db.inviteOn) .. ")")
+  print("  /shutup spam - Spam automatisch eintragen (jetzt " .. onOff(db.spamOn) .. ")")
+  print("  /shutup auto - Gildensuche bei der Anmeldung (jetzt " .. onOff(db.autoScan) .. ")")
   print("  /shutup meldung - Meldungen bei neuen Einträgen (jetzt " .. onOff(db.announce) .. ")")
 end
 
@@ -346,29 +564,7 @@ local function slash(msg)
   elseif cmd == "gilde" then
     local op, name = rest:match("^([%+%-])%s*(.-)$")
     if not op then say('Nutzung: /shutup gilde + Name  oder  /shutup gilde - Name') return end
-    if name == "" then
-      -- Gilde des Ziels
-      if UnitExists("target") and UnitIsPlayer("target") then name = (GetGuildInfo("target")) or "" end
-      if name == "" then say("Kein Gildenname angegeben und das Ziel hat keine Gilde.") return end
-    end
-    if op == "+" then
-      for _, g in ipairs(db.guilds) do if normGuild(g) == normGuild(name) then say("Die Gilde ist schon in der Liste.") return end end
-      table.insert(db.guilds, name)
-      say("Gilde hinzugefügt: " .. name .. ". Mitglieder werden beim Sehen oder mit /shutup scan eingetragen.")
-    else
-      for i, g in ipairs(db.guilds) do
-        if normGuild(g) == normGuild(name) then
-          table.remove(db.guilds, i)
-          local freed = 0
-          for key, e in pairs(db.muted) do
-            if e.guild and normGuild(e.guild) == normGuild(g) then unmute(key) freed = freed + 1 end
-          end
-          say(string.format("Gilde entfernt: %s (%d Spieler freigegeben).", g, freed))
-          return
-        end
-      end
-      say("Diese Gilde steht nicht in der Liste.")
-    end
+    if op == "+" then AAA.AddGuild(name) else AAA.RemoveGuild(name) end
   elseif cmd == "ich" or cmd == "ziel" then
     -- Diagnose: wie liefert der Client Vor- und Nachname? (Ziel, sonst du selbst)
     local unit = (UnitExists("target") and UnitIsPlayer("target")) and "target" or "player"
@@ -386,6 +582,14 @@ local function slash(msg)
     db.autoScan = not db.autoScan say("Suche bei der Anmeldung: " .. onOff(db.autoScan))
   elseif cmd == "meldung" then
     db.announce = not db.announce say("Meldungen: " .. onOff(db.announce))
+  elseif cmd == "gildeneinladung" or cmd == "einladung" then
+    db.inviteOn = not db.inviteOn say("Gildeneinladungen und -satzungen ablehnen: " .. onOff(db.inviteOn) .. " (Gruppen bleiben immer unberührt)")
+  elseif cmd == "spam" then
+    db.spamOn = not db.spamOn say("Spam automatisch eintragen: " .. onOff(db.spamOn))
+  elseif cmd == "hilfe" or cmd == "help" or cmd == "?" then
+    help()
+  elseif cmd == "" or cmd == "fenster" or cmd == "einstellungen" then
+    if AAA.Open then AAA.Open(cmd == "einstellungen" and "settings" or "list") else help() end
   else
     help()
   end
@@ -407,8 +611,10 @@ f:RegisterEvent("NAME_PLATE_UNIT_ADDED")
 f:RegisterEvent("GROUP_ROSTER_UPDATE")
 f:RegisterEvent("WHO_LIST_UPDATE")
 pcall(f.RegisterEvent, f, "ADDON_ACTION_BLOCKED")
+pcall(f.RegisterEvent, f, "GUILD_INVITE_REQUEST")
+pcall(f.RegisterEvent, f, "PETITION_SHOW")
 
-f:SetScript("OnEvent", function(_, event, arg1)
+f:SetScript("OnEvent", function(_, event, arg1, arg2)
   if event == "ADDON_LOADED" then
     if arg1 ~= ADDON then return end
     -- ShutUpDB; Altbestand aus AntifaAktionAzeroth (AAADB) wird übernommen, falls die Datei kopiert wurde
@@ -439,6 +645,22 @@ f:SetScript("OnEvent", function(_, event, arg1)
     if db.useBlizzIgnore == nil then db.useBlizzIgnore = false end
     if db.autoScan == nil then db.autoScan = true end
     if db.announce == nil then db.announce = true end
+    -- 0.4.0: Spam-Erkennung (Standard an) und Gildeneinladungen ablehnen (Standard aus, nur von Unbekannten)
+    if db.spamOn == nil then db.spamOn = true end
+    db.spamCount, db.spamWindow, db.spamMinLen = db.spamCount or 3, db.spamWindow or 120, db.spamMinLen or 15
+    if db.spamExpireDays == nil then db.spamExpireDays = 7 end
+    if db.spamWave == nil then db.spamWave = false end
+    db.waveSenders = db.waveSenders or 4
+    if db.inviteOn == nil then db.inviteOn = false end
+    if db.inviteOnlyUnknown == nil then db.inviteOnlyUnknown = true end
+    if db.inviteMute == nil then db.inviteMute = false end
+    AAA.db = db
+    -- automatisch eingetragener Spam läuft nach spamExpireDays ab (0 = nie)
+    if (db.spamExpireDays or 0) > 0 then
+      for k, e in pairs(db.muted) do
+        if kindOf(e) == "spam" and (time() - (e.t or 0)) > db.spamExpireDays * 86400 then unmute(k) end
+      end
+    end
   elseif event == "PLAYER_LOGIN" then
     -- Kein Nachtragen in die Spiel-Ignore-Liste beim Login (0.3.0): der Server kennt Offline-Spieler nicht und antwortet
     -- mit gelben Systemmeldungen "Antwort eines unbekannten Freundes vom Server" (Pierre 2026-11-26, Ursache der Meldungen in 0.2.0)
@@ -448,6 +670,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
         db.legacyRemoved = nil
       end
     end)
+    if C_Timer.NewTicker then C_Timer.NewTicker(120, cleanupSpam) end
     if db.autoScan and not db.whoBlocked and #db.guilds > 0 then
       local last = db.lastScan or 0
       if time() - last > 12 * 3600 then
@@ -466,6 +689,10 @@ f:SetScript("OnEvent", function(_, event, arg1)
     for i = 1, n do checkUnit(prefix .. i) end
   elseif event == "WHO_LIST_UPDATE" then
     onWhoResult()
+  elseif event == "GUILD_INVITE_REQUEST" then
+    onGuildInvite(arg1, arg2)
+  elseif event == "PETITION_SHOW" then
+    onPetition()
   elseif event == "ADDON_ACTION_BLOCKED" then
     -- Das Spiel erlaubt die /who-Abfrage aus einem Addon nicht: Suche abschalten, passive Erkennung bleibt
     if arg1 == ADDON and running then
@@ -475,3 +702,12 @@ f:SetScript("OnEvent", function(_, event, arg1)
     end
   end
 end)
+
+-- Schnittstelle für die Oberfläche (UI.lua)
+AAA.Say = say
+AAA.Mute = function(name) return mute(name, MANUAL) end
+AAA.Unmute = unmute
+AAA.KindOf = kindOf
+AAA.NameOrTarget = nameOrTarget
+AAA.NumBlizz = numBlizzIgnores
+AAA.MANUAL, AAA.SPAM, AAA.INVITE = MANUAL, SPAM, INVITE

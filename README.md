@@ -24,6 +24,7 @@ Kommst du von der Vorversion "Antifaschiste Aktion Azeroth": den alten Ordner `A
 
 | Befehl | Wirkung |
 |---|---|
+| `/shutup` | Fenster öffnen (Liste mit Grund, Gilden, Einstellungen); auch per Minimap-Button |
 | `/shutup + Vorname Nachname` | Spieler ignorieren (ohne Namen: dein Ziel) |
 | `/shutup - Vorname Nachname` | Spieler wieder freigeben (der Anfang des Namens genügt, ohne Namen: dein Ziel) |
 | `/shutup gilde + Name` | ganze Gilde ignorieren (ohne Namen: die Gilde deines Ziels) |
@@ -31,12 +32,23 @@ Kommst du von der Vorversion "Antifaschiste Aktion Azeroth": den alten Ordner `A
 | `/shutup liste` | Gilden und Zahl der Einträge; `/shutup liste spieler` zeigt alle Namen |
 | `/shutup scan` | Gilden der Liste per `/who` absuchen |
 | `/shutup ziel` | Diagnose: zeigt, wie der Client Vor- und Nachname deines Ziels (sonst deines Chars) liefert |
+| `/shutup gildeneinladung` | Gildeneinladungen und -satzungen automatisch ablehnen an/aus (Gruppen nie) |
+| `/shutup spam` | Spam automatisch eintragen an/aus |
 | `/shutup chat` | Chat-Filter an/aus |
 | `/shutup spiel` | Spieler zusätzlich in die Ignore-Liste des Spiels eintragen an/aus (Standard: aus) |
 | `/shutup auto` | Gildensuche bei der Anmeldung an/aus (nur wenn Gilden eingetragen sind) |
 | `/shutup meldung` | Meldungen bei neuen Einträgen an/aus |
 
 Bei den Gildennamen ist Groß- und Kleinschreibung egal, und ü, ä, ö gelten als u, a, o.
+
+## Oberfläche
+
+`/shutup` öffnet ein Fenster mit drei Reitern: **Liste** (alle Geblockten mit Grund *Manuell*, *Gilde*, *Spam* oder *Einladung*, Datum, Suche, Filter, Freigeben-Knopf und Felder zum Eintragen), **Gilden** (eingetragene Gilden mit Zahl der Mitglieder, hinzufügen, entfernen, per `/who` suchen) und **Einstellungen**. Der Minimap-Button öffnet es ebenfalls (Rechtsklick: Einstellungen, Ziehen: verschieben).
+
+## Spam und Gildeneinladungen
+
+- **Spam automatisch eintragen:** Wiederholt jemand denselben Text (Links, Zahlen und Satzzeichen werden herausgerechnet) mehrfach in kurzer Zeit, kommt er als "Spam" auf die Liste. Standard: 3 Wiederholungen in 120 Sekunden, mindestens 15 Zeichen, in Say, Yell, Flüstern und öffentlichen Kanälen. **Handel und Gruppensuche zählen nie**, ebenso nie Gruppen-, Schlachtzugs- oder Gildenchat. **Freunde, Gildenmitglieder und Gruppenmitglieder werden nie automatisch eingetragen.** Jeder Eintrag meldet sich mit dem Befehl zum Freigeben und läuft nach 7 Tagen ab (einstellbar, 0 = nie). Optional erkennt es auch Bot-Wellen: derselbe Text von mehreren verschiedenen Absendern.
+- **Gildeneinladungen und Gildensatzungen ablehnen:** lehnt Einladungen in eine Gilde und angebotene Gildensatzungen zum Unterschreiben ab, **Gruppen- und Schlachtzugseinladungen nie**. Standard: aus; im Einstellungs-Reiter einschaltbar, wahlweise nur von Unbekannten (Freunde, Gildenmitglieder, Gruppe werden durchgelassen) und mit der Option, den Einlader auf die Liste zu setzen. Deine eigene Satzung beim Gründen einer Gilde bleibt unberührt.
 
 ## So funktioniert es
 
@@ -70,9 +82,15 @@ And then there are the edgy guilds that think it is hilarious to throw around po
 ### Installation
 Copy the `ShutUp` folder to `Interface/AddOns/` (or install with the CurseForge app / WoWUp, game version Forever). Coming from the old version? Delete the folder `AntifaAktionAzeroth`. To carry your old list over, copy `WTF/Account/<account>/SavedVariables/AntifaAktionAzeroth.lua` to `ShutUp.lua` in the same folder. The two guilds that used to be hard-wired are removed from the guild list on first start, players already on the list stay.
 
+### Window, spam and guild invites
+`/shutup` opens a window with three tabs: **List** (everyone you blocked, with reason *Manual*, *Guild*, *Spam* or *Invite*, date, search, filter, free button and fields to add), **Guilds** and **Settings**; the minimap button opens it too.
+**Auto-block spam:** the same text (links, numbers and punctuation ignored) repeated in a short time puts the sender on the list as "Spam". Default: 3 times in 120 seconds, at least 15 characters, in say, yell, whispers and public channels. Trade and Looking for Group never count, nor party, raid or guild chat. **Friends, guild members and group members are never added automatically.** Entries expire after 7 days (adjustable, 0 = never). Optional: bot waves (the same text from several senders).
+**Decline guild invites and guild charters:** off by default; switch on in the settings tab, optionally only from unknown people, optionally with the inviter added to the list. **Group and raid invites are never touched.**
+
 ### Commands
 | Command | Effect |
 |---|---|
+| `/shutup` | open the window (list with reasons, guilds, settings) |
 | `/shutup + First Last` | ignore a player (no name: your target) |
 | `/shutup - First Last` | free a player again (the start of the name is enough, no name: your target) |
 | `/shutup gilde + Name` | ignore a whole guild (no name: your target's guild) |
@@ -80,6 +98,7 @@ Copy the `ShutUp` folder to `Interface/AddOns/` (or install with the CurseForge 
 | `/shutup liste` | guilds and number of entries; `/shutup liste spieler` shows all names |
 | `/shutup scan` | search the listed guilds with `/who` |
 | `/shutup ziel` | diagnostic: how the client reports your target's first and last name |
+| `/shutup gildeneinladung` / `spam` | decline guild invites and charters / auto-block spam on or off |
 | `/shutup chat` / `spiel` / `auto` / `meldung` | switch chat filter / also use the game ignore list (default off) / login guild search / messages on or off |
 
 Guild names are case-insensitive, and ü, ä, ö count as u, a, o.
