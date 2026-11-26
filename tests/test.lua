@@ -29,8 +29,13 @@ assert(ShutUpDB.muted["anna"] == nil, "Vornamen-Altlast entfernt")
 assert((ShutUpDB.legacyRemoved or 0) == 1)
 SlashCmdList.SHUTUP("gilde + Alternative für Durotar")
 on(nil, "PLAYER_TARGET_CHANGED")
+assert(#IGN == 0, "Standard: Spiel-Ignore-Liste bleibt unberührt")
+assert(ShutUpDB.useBlizzIgnore == false)
 assert(ShutUpDB.muted["anna meyer"], "voller Name als Schlüssel: " .. tostring(next(ShutUpDB.muted)))
-assert(IGN[1] == "Anna Meyer", "AddIgnore mit vollem Namen ohne Realm, war " .. tostring(IGN[1]))
+SlashCmdList.SHUTUP("spiel")
+SlashCmdList.SHUTUP("+ Clara Schmidt")
+assert(IGN[1] == "Clara Schmidt" and ShutUpDB.muted["clara schmidt"].viaGame, "mit /shutup spiel: AddIgnore mit vollem Namen, war " .. tostring(IGN[1]))
+SlashCmdList.SHUTUP("spiel")
 -- Chat-Absender mit Realm wird erkannt
 local hidden = false
 for _, fn in ipairs(filters) do if fn(nil, nil, "hallo", "Anna Meyer-Forever") then hidden = true end end

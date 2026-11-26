@@ -30,7 +30,7 @@ Kommst du von der Vorversion "Antifaschiste Aktion Azeroth": den alten Ordner `A
 | `/shutup scan` | Gilden der Liste per `/who` absuchen |
 | `/shutup ziel` | Diagnose: zeigt, wie der Client Vor- und Nachname deines Ziels (sonst deines Chars) liefert |
 | `/shutup chat` | Chat-Filter an/aus |
-| `/shutup spiel` | Spiel-Ignore-Liste mitbenutzen an/aus |
+| `/shutup spiel` | Spieler zusätzlich in die Ignore-Liste des Spiels eintragen an/aus (Standard: aus) |
 | `/shutup auto` | Gildensuche bei der Anmeldung an/aus (nur wenn Gilden eingetragen sind) |
 | `/shutup meldung` | Meldungen bei neuen Einträgen an/aus |
 
@@ -38,7 +38,7 @@ Bei den Gildennamen ist Groß- und Kleinschreibung egal, und ü, ä, ö gelten a
 
 ## So funktioniert es
 
-- **Einzelne Spieler:** stehen sofort auf der Liste und, solange dort Platz ist, zusätzlich in der normalen Ignore-Liste des Spiels (Limit des Spiels: 50 Einträge). Darüber hinaus blendet der Chat-Filter sie weiter aus (Say, Yell, Flüstern, Kanäle, Gruppe, Schlachtzug, Gilde).
+- **Einzelne Spieler:** stehen sofort auf ShutUps eigener Liste, ohne Limit. Ihr Chat wird ausgeblendet (Say, Yell, Flüstern, Kanäle, Gruppe, Schlachtzug, Gilde). **Die Ignore-Liste des Spiels (50 Plätze) bleibt für deine normalen Ignores frei.** Wer zusätzlich will, dass das Spiel auch Einladungen und Handel dieser Spieler blockt, schaltet `/shutup spiel` ein; dann trägt ShutUp! sie dort ein, solange Platz ist, und nimmt beim Freigeben nur wieder heraus, was es selbst eingetragen hat.
 - **Ganze Gilden:** WoW kann keine Mitglieder einer fremden Gilde auflisten. ShutUp! sammelt deshalb passiv: jeder Spieler, den du per Maus, Ziel, Namensplakette oder Gruppe siehst, wird auf seine Gilde geprüft. Zusätzlich fragt `/shutup scan` per `/who g-"Gildenname"` nach (bei mehr als 50 Treffern nach Stufenbereichen geteilt, einmal pro Anmeldung automatisch).
 
 ## Namen in WoW Forever
@@ -76,12 +76,12 @@ Copy the `ShutUp` folder to `Interface/AddOns/` (or install with the CurseForge 
 | `/shutup liste` | guilds and number of entries; `/shutup liste spieler` shows all names |
 | `/shutup scan` | search the listed guilds with `/who` |
 | `/shutup ziel` | diagnostic: how the client reports your target's first and last name |
-| `/shutup chat` / `spiel` / `auto` / `meldung` | switch chat filter / game ignore list / login guild search / messages on or off |
+| `/shutup chat` / `spiel` / `auto` / `meldung` | switch chat filter / also use the game ignore list (default off) / login guild search / messages on or off |
 
 Guild names are case-insensitive, and ü, ä, ö count as u, a, o.
 
 ### How it works
-- **Single players:** on the list at once and, while there is room, also in the game's own ignore list (game limit: 50 entries). Beyond that the chat filter keeps hiding them (say, yell, whispers, channels, party, raid, guild).
+- **Single players:** on ShutUp!'s own list at once, without a limit, and their chat is hidden (say, yell, whispers, channels, party, raid, guild). **The game's own ignore list (50 slots) stays free for your normal ignores.** If you also want the game to block invites and trades from them, switch on `/shutup spiel`: ShutUp! then adds them there while there is room, and on freeing only removes what it added itself.
 - **Whole guilds:** WoW cannot list the members of a foreign guild. ShutUp! collects them passively (everyone you see by mouseover, target, nameplate or group is checked for their guild) and with `/shutup scan` (`/who g-"Guild"`, split by level range above 50 results, once per login automatically).
 - **Names in WoW Forever:** characters have first and last names. ShutUp! always works with the **full name** (without realm) and never ignores by first name alone, so unrelated players with the same first name are not hit.
 

@@ -17,7 +17,7 @@ _G.ShutUp = AAA
 local PREFIX = "|cffe53935[ShutUp!]|r "
 -- Bis 0.2.0 voreingetragen; wird beim ersten Start von 0.3.0 aus der Gildenliste entfernt (siehe ADDON_LOADED)
 local OLD_DEFAULT_GUILDS = { "Alternative für Durotar", "Alternative für Azeroth" }
-local DB_VERSION = 3
+local DB_VERSION = 4
 local MANUAL = "manuell"
 local MAX_LEVEL = 90
 local WHO_LIMIT = 50
@@ -117,8 +117,9 @@ local function mute(name, guild, quiet)
   if not isFullName(name) then return false, "vorname" end -- nur Vorname: mehrdeutig, kein Ignorieren
   if k == nameKey(fullNameOf("player")) then return false, "ich" end
   if db.muted[k] then return false, "schon" end
-  db.muted[k] = { name = name, guild = guild or MANUAL, t = time() }
   local viaGame = blizzIgnore(name)
+  -- viaGame merken: nur was wir selbst in die Spiel-Liste gesetzt haben, nehmen wir beim Freigeben wieder heraus
+  db.muted[k] = { name = name, guild = guild or MANUAL, t = time(), viaGame = viaGame or nil }
   if db.announce and not quiet then
     say(string.format("%s (%s) wird ignoriert%s.", name, guild or MANUAL, viaGame and "" or " (nur Chat-Filter)"))
   end
@@ -137,7 +138,9 @@ local function unmute(query)
   local e = db.muted[k]
   if not e then return nil end
   db.muted[k] = nil
-  if C_FriendList and C_FriendList.DelIgnore then C_FriendList.DelIgnore(e.name) elseif DelIgnore then DelIgnore(e.name) end
+  if e.viaGame then
+    if C_FriendList and C_FriendList.DelIgnore then C_FriendList.DelIgnore(e.name) elseif DelIgnore then DelIgnore(e.name) end
+  end
   return e.name
 end
 
@@ -297,7 +300,7 @@ local function help()
   print("  /shutup scan - Gilden der Liste per /who absuchen und Treffer ignorieren")
   print("  /shutup ziel - Diagnose: wie der Client Vor- und Nachname des Ziels (sonst deines Chars) liefert")
   print("  /shutup chat - Chat-Filter an/aus (jetzt " .. onOff(db.hideChat) .. ")")
-  print("  /shutup spiel - Spiel-Ignore-Liste mitbenutzen (jetzt " .. onOff(db.useBlizzIgnore) .. ")")
+  print("  /shutup spiel - zusätzlich in die Spiel-Ignore-Liste eintragen, blockt auch Einladungen/Handel (jetzt " .. onOff(db.useBlizzIgnore) .. ")")
   print("  /shutup auto - Suche bei der Anmeldung (jetzt " .. onOff(db.autoScan) .. ")")
   print("  /shutup meldung - Meldungen bei neuen Einträgen (jetzt " .. onOff(db.announce) .. ")")
 end
@@ -416,6 +419,9 @@ f:SetScript("OnEvent", function(_, event, arg1)
     -- 0.3.0: die zwei früher fest voreingetragenen Gilden raus. Bereits eingetragene Spieler bleiben auf der Liste
     -- (mit /shutup - freigeben), nur neue Treffer über diese Gilden gibt es nicht mehr. Wer sie will, trägt sie wieder von Hand ein.
     if (db.ver or 0) < DB_VERSION then
+      -- 0.3.0: die Spiel-Ignore-Liste bleibt für normale Ignores frei, ShutUp! nutzt nur seine Liste + Chat-Filter
+      -- (wer sie doch mitbenutzen will: /shutup spiel). Schon in der Spiel-Liste stehende Einträge bleiben dort unberührt.
+      db.useBlizzIgnore = false
       local old = {}
       for _, g in ipairs(OLD_DEFAULT_GUILDS) do old[normGuild(g)] = true end
       for i = #db.guilds, 1, -1 do
@@ -430,7 +436,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
     end
     if legacy > 0 then db.legacyRemoved = (db.legacyRemoved or 0) + legacy end
     if db.hideChat == nil then db.hideChat = true end
-    if db.useBlizzIgnore == nil then db.useBlizzIgnore = true end
+    if db.useBlizzIgnore == nil then db.useBlizzIgnore = false end
     if db.autoScan == nil then db.autoScan = true end
     if db.announce == nil then db.announce = true end
   elseif event == "PLAYER_LOGIN" then
@@ -444,7 +450,7 @@ f:SetScript("OnEvent", function(_, event, arg1)
       if db.useBlizzIgnore and C_FriendList and C_FriendList.IsIgnored then
         for _, e in pairs(db.muted) do
           if numBlizzIgnores() >= 50 then break end
-          if not C_FriendList.IsIgnored(e.name) then blizzIgnore(e.name) end
+          if not C_FriendList.IsIgnored(e.name) and blizzIgnore(e.name) then e.viaGame = true end
         end
       end
     end)
