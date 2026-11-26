@@ -60,8 +60,16 @@ assert(#ShutUpDB.guilds == 0)
 SlashCmdList.SHUTUP("- bob")
 assert(ShutUpDB.muted["bob tester"] == nil)
 
+-- 0.4.2: dieselbe Nachricht erreicht den Filter einmal je Chatfenster, zählt aber nur einmal
+for i = 1, 6 do filters[1](nil, "CHAT_MSG_CHANNEL", "jetzt weißt du woher es seinen namen hat :D", "Lyneia Schattenwald-Forever", nil, "1. Allgemein", nil, nil, nil, nil, "Allgemein", nil, 424242, nil) end
+assert(ShutUpDB.muted["lyneia schattenwald"] == nil, "eine Nachricht in mehreren Chatfenstern ist kein Spam")
+for i = 1, 6 do filters[1](nil, "CHAT_MSG_CHANNEL", "jetzt weißt du woher es seinen namen hat :D", "Lyneia Schattenwald-Forever", nil, "1. Allgemein", nil, nil, nil, nil, "Allgemein", nil, nil, nil) end
+assert(ShutUpDB.muted["lyneia schattenwald"] == nil, "ohne Zeilen-ID: Aufrufe im selben Moment zählen nicht")
 -- 0.4.0: Spam-Erkennung
-local function say_(ev, msg, sender, chan, guid) return filters[1](nil, ev, msg, sender, nil, chan, nil, nil, nil, nil, chan, nil, nil, guid) end
+local T, LID = 100, 0
+function GetTime() return T end
+-- jeder Aufruf = neue Nachricht (5 s später, neue Zeilen-ID)
+local function say_(ev, msg, sender, chan, guid) T = T + 5; LID = LID + 1 return filters[1](nil, ev, msg, sender, nil, chan, nil, nil, nil, nil, chan, nil, LID, guid) end
 local SPAMTXT = "Verkaufe billig Gold bei www.beispiel-gold.de jetzt zugreifen!"
 assert(ShutUpDB.spamOn == true and ShutUpDB.inviteOn == false)
 assert(not say_("CHAT_MSG_SAY", SPAMTXT, "Gold Seller-Forever"))

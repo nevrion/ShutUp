@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.2
+- **EN:** Fix: the spam detection counted one single message several times (the chat filter runs once per chat window, so with three tabs a message counted three times) and wrongly put people on the list who wrote one long sentence in a public channel. Each message now counts once. If you were blocked by mistake, free them in the list tab or with `/shutup - First Last`.
+- **DE:** Behoben: Die Spam-Erkennung zählte eine einzige Nachricht mehrfach (der Chat-Filter läuft einmal je Chatfenster, bei drei Tabs zählte eine Nachricht dreimal) und setzte fälschlich Leute auf die Liste, die einen langen Satz in einen öffentlichen Kanal geschrieben haben. Jede Nachricht zählt jetzt einmal. Wurde jemand zu Unrecht geblockt, im Reiter Liste oder mit `/shutup - Vorname Nachname` freigeben.
+
 ## 0.4.1
 - **EN:** Fix: WoW Forever blocks the `/who` search when an addon starts it from a timer (error `ADDON_ACTION_BLOCKED ... SendWho()`). The automatic search at login is gone; the search now sends one query per click ("Per /who suchen" / "Next query" in the Guilds tab) or per typed `/shutup scan`. `/shutup auto` is removed.
 - **DE:** Behoben: WoW Forever blockt die `/who`-Suche, wenn ein Addon sie aus einem Timer startet (Fehler `ADDON_ACTION_BLOCKED ... SendWho()`). Die automatische Suche beim Anmelden entfällt; die Suche sendet jetzt eine Abfrage pro Klick ("Per /who suchen" bzw. "Nächste Abfrage" im Reiter Gilden) oder pro getipptem `/shutup scan`. `/shutup auto` entfällt.

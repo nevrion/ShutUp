@@ -298,6 +298,8 @@ local function spamCheck(event, msg, sender, channelName, baseName, guid)
   if not per then per = {} spamLog[k] = per end
   local fresh = {}
   for _, t in ipairs(per[norm] or {}) do if now - t <= window then fresh[#fresh + 1] = t end end
+  -- Doppelaufruf derselben Nachricht (andere Chatfenster, ohne Zeilen-ID): weniger als 1 s Abstand zählt nicht
+  if #fresh > 0 and now - fresh[#fresh] < 1 then return false end
   fresh[#fresh + 1] = now
   per[norm] = fresh
   if #fresh >= (db.spamCount or 3) then
@@ -500,10 +502,16 @@ end
 -- 3. Chat-Filter
 ---------------------------------------------------------------------------
 
-local function chatFilter(_, event, msg, sender, _, channelName, _, _, _, _, baseName, _, _, guid)
+-- Der Filter wird für JEDES Chatfenster aufgerufen, in dem die Nachricht erscheint: dieselbe Nachricht kommt mehrfach an
+-- (bei drei Tabs dreimal, sonst wäre jeder lange Satz "Spam"). Deshalb pro Zeilen-ID nur einmal zählen.
+local lastLine, lastResult
+local function chatFilter(_, event, msg, sender, _, channelName, _, _, _, _, baseName, _, lineID, guid)
   if not db or not sender then return end
   if db.hideChat and isMuted(sender) then return true end
-  if spamCheck(event, msg, sender, channelName, baseName, guid) then return true end
+  if lineID and lineID == lastLine then return lastResult end
+  local r = spamCheck(event, msg, sender, channelName, baseName, guid) or nil
+  lastLine, lastResult = lineID, r
+  return r
 end
 
 local CHAT_EVENTS = {
