@@ -10,6 +10,8 @@ Ein allgemeines Ignore-Addon für **WoW Forever** (Interface 16001). Du trägst 
 
 Das Addon wirkt nur auf deinem Client. Niemand wird benachrichtigt.
 
+Und dann gibt es die Edgy-Gilden, die es lustig finden, populistische Klischees auszupacken, nur um andere zu triggern. Dafür musst du dich weder aufregen noch diskutieren: Gilde einmal mit `/shutup gilde + Name` eintragen, und sie hält für dich die Klappe, ganz ohne Anstrengung.
+
 ## Installation
 
 1. Zip aus dem [neuesten Release](../../releases/latest) herunterladen (oder über CurseForge/WoWUp installieren).
@@ -60,6 +62,8 @@ Bitte als Issue hier im Repo. Hilfreich ist die Ausgabe von `/console scriptErro
 ## English
 
 **A general ignore addon for WoW Forever** (interface 16001). You add single players or whole guilds by hand, ShutUp! puts them on ignore and hides their chat. The list is **shared by all your characters** (account-wide). No guilds are pre-filled. It only affects your own client, nobody is notified.
+
+And then there are the edgy guilds that think it is hilarious to throw around populist clichés just to trigger people. You do not have to argue with them or get worked up: put the guild on the list once with `/shutup gilde + Name` and it shuts up for you, with zero effort.
 
 *Formerly "Antifaschiste Aktion Azeroth". The command is now `/shutup`.*
 
