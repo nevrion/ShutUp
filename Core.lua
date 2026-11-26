@@ -440,18 +440,12 @@ f:SetScript("OnEvent", function(_, event, arg1)
     if db.autoScan == nil then db.autoScan = true end
     if db.announce == nil then db.announce = true end
   elseif event == "PLAYER_LOGIN" then
-    -- Eintraege aus der eigenen Liste nachtragen, falls die Spiel-Liste inzwischen Luft hat
-    -- (Ignore-Liste wird erst kurz nach dem Login geladen)
+    -- Kein Nachtragen in die Spiel-Ignore-Liste beim Login (0.3.0): der Server kennt Offline-Spieler nicht und antwortet
+    -- mit gelben Systemmeldungen "Antwort eines unbekannten Freundes vom Server" (Pierre 2026-11-26, Ursache der Meldungen in 0.2.0)
     C_Timer.After(10, function()
       if (db.legacyRemoved or 0) > 0 then
         say(string.format("%d alte Einträge nur mit Vornamen entfernt (zu mehrdeutig). In der Spiel-Ignore-Liste habe ich nichts verändert: bitte dort prüfen, ob falsche Vornamen stehen.", db.legacyRemoved))
         db.legacyRemoved = nil
-      end
-      if db.useBlizzIgnore and C_FriendList and C_FriendList.IsIgnored then
-        for _, e in pairs(db.muted) do
-          if numBlizzIgnores() >= 50 then break end
-          if not C_FriendList.IsIgnored(e.name) and blizzIgnore(e.name) then e.viaGame = true end
-        end
       end
     end)
     if db.autoScan and not db.whoBlocked and #db.guilds > 0 then
