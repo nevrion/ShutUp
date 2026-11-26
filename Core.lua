@@ -18,7 +18,7 @@ _G.ShutUp = AAA
 local PREFIX = "|cffe53935[ShutUp!]|r "
 -- Bis 0.2.0 voreingetragen; wird beim ersten Start von 0.3.0 aus der Gildenliste entfernt (siehe ADDON_LOADED)
 local OLD_DEFAULT_GUILDS = { "Alternative für Durotar", "Alternative für Azeroth" }
-local DB_VERSION = 4
+local DB_VERSION = 5
 local MANUAL = "manuell"
 local SPAM, INVITE = "Spam", "Einladung"
 local MAX_LEVEL = 90
@@ -385,7 +385,7 @@ end
 -- 2. Aktiv: /who
 ---------------------------------------------------------------------------
 
-local queue, running, current = {}, false, nil
+local queue, current = {}, nil
 local scanStats
 
 local function whoCount()
@@ -413,14 +413,19 @@ local function sendWho(filter)
   end
 end
 
-local function nextQuery()
+-- WoW Forever erlaubt SendWho nur nach einem echten Klick oder getippten Befehl (nicht aus Timern, sonst ADDON_ACTION_BLOCKED).
+-- Deshalb sendet jeder Aufruf von AAA.Scan (Befehl oder Knopf) genau EINE Abfrage; weitere folgen beim nächsten Aufruf.
+local function pendingScan() return #queue + (current and 1 or 0) end
+AAA.PendingScan = pendingScan
+
+local function startQuery()
   local q = table.remove(queue, 1)
   if not q then
-    running, current = false, nil
     if scanStats then
       say(string.format("Suche fertig: %d neue Spieler eingetragen, %d Abfragen.", scanStats.new, scanStats.queries))
       scanStats = nil
     end
+    changed()
     return
   end
   current = q
@@ -430,16 +435,17 @@ local function nextQuery()
   local ok, err = pcall(sendWho, filter)
   if not ok then
     say("Die Abfrage wurde abgelehnt: " .. tostring(err))
-    running, current, queue = false, nil, {}
-    scanStats = nil
+    current, queue, scanStats = nil, {}, nil
+    changed()
     return
   end
-  -- Falls keine Antwort kommt (Spiel drosselt), nach Zeitüberschreitung weitermachen
+  -- Antwortet der Server nicht, nach Zeitüberschreitung wieder freigeben
   local mine = q
   C_Timer.After(WHO_INTERVAL * 2, function()
     if current == mine then
       current = nil
-      C_Timer.After(1, nextQuery)
+      say("Keine Antwort auf die Abfrage. Mit /shutup scan erneut versuchen.")
+      changed()
     end
   end)
 end
@@ -467,20 +473,27 @@ local function onWhoResult()
       table.insert(queue, { guild = q.guild, minL = mid + 1, maxL = hi })
     end
   end
-  C_Timer.After(WHO_INTERVAL, nextQuery)
+  if #queue > 0 then
+    say(string.format("%s: %d neu eingetragen. Noch %d Abfragen offen: /shutup scan (oder Knopf im Fenster) für die nächste.", q.guild, added, #queue))
+  else
+    say(string.format("Suche fertig: %d neue Spieler eingetragen, %d Abfragen.", scanStats.new, scanStats.queries))
+    scanStats = nil
+  end
+  changed()
 end
 
+-- Muss aus einem Klick oder getippten Befehl aufgerufen werden
 function AAA.Scan()
-  if running then say("Es läuft schon eine Suche.") return end
-  if db.whoBlocked then say("Das Spiel blockiert die /who-Suche für Addons (siehe frühere Meldung). Nur die passive Erkennung ist aktiv.") return end
-  queue = {}
-  for _, g in ipairs(db.guilds) do table.insert(queue, { guild = g }) end
-  if #queue == 0 then say("Keine Gilden in der Liste. Eine Gilde trägst du mit /shutup gilde + Name ein.") return end
-  scanStats = { new = 0, queries = 0 }
-  running = true
-  db.lastScan = time()
-  say(string.format("Suche gestartet (%d Gilden). Das dauert wegen der Abfrage-Sperre eine Weile.", #queue))
-  nextQuery()
+  if db.whoBlocked then say("Das Spiel blockiert die /who-Suche für Addons. Es bleibt die Erkennung über Maus, Ziel, Namensplakette und Gruppe.") return end
+  if current then say("Ich warte noch auf die Antwort des Servers.") return end
+  if #queue == 0 then
+    for _, g in ipairs(db.guilds) do table.insert(queue, { guild = g }) end
+    if #queue == 0 then say("Keine Gilden in der Liste. Eine Gilde trägst du mit /shutup gilde + Name ein.") return end
+    scanStats = { new = 0, queries = 0 }
+    db.lastScan = time()
+  end
+  scanStats = scanStats or { new = 0, queries = 0 }
+  startQuery()
 end
 
 ---------------------------------------------------------------------------
@@ -519,7 +532,6 @@ local function help()
   print("  /shutup spiel - zusätzlich in die Spiel-Ignore-Liste eintragen (jetzt " .. onOff(db.useBlizzIgnore) .. ")")
   print("  /shutup gildeneinladung - Gildeneinladungen und -satzungen ablehnen (jetzt " .. onOff(db.inviteOn) .. ")")
   print("  /shutup spam - Spam automatisch eintragen (jetzt " .. onOff(db.spamOn) .. ")")
-  print("  /shutup auto - Gildensuche bei der Anmeldung (jetzt " .. onOff(db.autoScan) .. ")")
   print("  /shutup meldung - Meldungen bei neuen Einträgen (jetzt " .. onOff(db.announce) .. ")")
 end
 
@@ -578,8 +590,6 @@ local function slash(msg)
     db.hideChat = not db.hideChat say("Chat-Filter: " .. onOff(db.hideChat))
   elseif cmd == "spiel" then
     db.useBlizzIgnore = not db.useBlizzIgnore say("Spiel-Ignore-Liste mitbenutzen: " .. onOff(db.useBlizzIgnore))
-  elseif cmd == "auto" then
-    db.autoScan = not db.autoScan say("Suche bei der Anmeldung: " .. onOff(db.autoScan))
   elseif cmd == "meldung" then
     db.announce = not db.announce say("Meldungen: " .. onOff(db.announce))
   elseif cmd == "gildeneinladung" or cmd == "einladung" then
@@ -628,6 +638,7 @@ f:SetScript("OnEvent", function(_, event, arg1, arg2)
       -- 0.3.0: die Spiel-Ignore-Liste bleibt für normale Ignores frei, ShutUp! nutzt nur seine Liste + Chat-Filter
       -- (wer sie doch mitbenutzen will: /shutup spiel). Schon in der Spiel-Liste stehende Einträge bleiben dort unberührt.
       db.useBlizzIgnore = false
+      db.whoBlocked, db.autoScan = nil, nil -- 0.4.1: Suche nur noch per Klick/Befehl, Sperre neu prüfen
       local old = {}
       for _, g in ipairs(OLD_DEFAULT_GUILDS) do old[normGuild(g)] = true end
       for i = #db.guilds, 1, -1 do
@@ -643,7 +654,6 @@ f:SetScript("OnEvent", function(_, event, arg1, arg2)
     if legacy > 0 then db.legacyRemoved = (db.legacyRemoved or 0) + legacy end
     if db.hideChat == nil then db.hideChat = true end
     if db.useBlizzIgnore == nil then db.useBlizzIgnore = false end
-    if db.autoScan == nil then db.autoScan = true end
     if db.announce == nil then db.announce = true end
     -- 0.4.0: Spam-Erkennung (Standard an) und Gildeneinladungen ablehnen (Standard aus, nur von Unbekannten)
     if db.spamOn == nil then db.spamOn = true end
@@ -671,12 +681,6 @@ f:SetScript("OnEvent", function(_, event, arg1, arg2)
       end
     end)
     if C_Timer.NewTicker then C_Timer.NewTicker(120, cleanupSpam) end
-    if db.autoScan and not db.whoBlocked and #db.guilds > 0 then
-      local last = db.lastScan or 0
-      if time() - last > 12 * 3600 then
-        C_Timer.After(30, function() if not running then AAA.Scan() end end)
-      end
-    end
   elseif event == "UPDATE_MOUSEOVER_UNIT" then
     checkUnit("mouseover")
   elseif event == "PLAYER_TARGET_CHANGED" then
@@ -695,9 +699,10 @@ f:SetScript("OnEvent", function(_, event, arg1, arg2)
     onPetition()
   elseif event == "ADDON_ACTION_BLOCKED" then
     -- Das Spiel erlaubt die /who-Abfrage aus einem Addon nicht: Suche abschalten, passive Erkennung bleibt
-    if arg1 == ADDON and running then
-      db.whoBlocked, db.autoScan = true, false
-      running, current, queue, scanStats = false, nil, {}, nil
+    if arg1 == ADDON and current then
+      db.whoBlocked = true
+      current, queue, scanStats = nil, {}, nil
+      changed()
       say("Das Spiel blockiert die /who-Suche für Addons. Die Suche ist abgeschaltet; es bleibt die Erkennung über Maus, Ziel, Namensplakette und Gruppe.")
     end
   end

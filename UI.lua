@@ -329,6 +329,10 @@ local function refreshGuilds()
   end
   win.gempty:SetShown(total == 0)
   win.gcount:SetText(total .. " Gilden eingetragen")
+  if win.scanBtn then
+    local n = AAA.PendingScan and AAA.PendingScan() or 0
+    win.scanBtn.label:SetText(n > 0 and string.format("Nächste Abfrage (%d offen)", n) or "Per /who suchen")
+  end
   setThumb(win.gtrack, win.gthumb, guildOffset, total, GUILD_ROWS)
 end
 
@@ -381,11 +385,12 @@ local function buildGuildPage(pg)
   local tgt = Button(pg, "Gilde des Ziels", 90, 24, function() AAA.AddGuild("") end)
   tgt:SetPoint("LEFT", addBtn, "RIGHT", 6, 0)
 
-  local scan = Button(pg, "Jetzt per /who suchen", 180, 24, function() AAA.Scan() end)
+  local scan = Button(pg, "Per /who suchen", 180, 24, function() AAA.Scan(); refreshGuilds() end)
   scan:SetPoint("TOPLEFT", 8, y - 34)
+  win.scanBtn = scan
   local note = Text(pg, 10, C.dim)
   note:SetPoint("LEFT", scan, "RIGHT", 10, 0); note:SetWidth(WIN_W - 220)
-  note:SetText("Dauert wegen der Abfrage-Sperre eine Weile.")
+  note:SetText("Eine Abfrage pro Klick (Sperre des Spiels). Bei großen Gilden mehrfach klicken.")
 
   win.gcount = Text(pg, 10, C.dim)
   win.gcount:SetPoint("BOTTOMLEFT", 12, 10)
@@ -418,29 +423,28 @@ local function buildSettingsPage(pg)
   flag("Chat der Spieler auf der Liste ausblenden", "hideChat", -30)
   flag("Zusätzlich in die Spiel-Ignore-Liste eintragen", "useBlizzIgnore", -52)
   sub("Blockt dann auch Einladungen und Handel, belegt aber die 50 Plätze des Spiels. Standard: aus.", -70)
-  flag("Gilden beim Anmelden automatisch per /who suchen", "autoScan", -92)
-  flag("Meldung im Chat, wenn jemand eingetragen wird", "announce", -114)
-  put(Check(pg, "Minimap-Button anzeigen", function() return not D().mmHide end, function(v) D().mmHide = (not v) or nil; if mm then mm:SetShown(v) end end), -136)
+  flag("Meldung im Chat, wenn jemand eingetragen wird", "announce", -92)
+  put(Check(pg, "Minimap-Button anzeigen", function() return not D().mmHide end, function(v) D().mmHide = (not v) or nil; if mm then mm:SetShown(v) end end), -114)
 
-  head("Gildeneinladungen und Gildensatzungen", -166)
-  flag("Automatisch ablehnen (Gruppen und Schlachtzüge nie)", "inviteOn", -188)
-  flag("Nur von Unbekannten (Freunde, Gildenmitglieder, Gruppe durchlassen)", "inviteOnlyUnknown", -210)
-  flag("Einlader zusätzlich auf die Liste setzen", "inviteMute", -232)
+  head("Gildeneinladungen und Gildensatzungen", -144)
+  flag("Automatisch ablehnen (Gruppen und Schlachtzüge nie)", "inviteOn", -166)
+  flag("Nur von Unbekannten (Freunde, Gildenmitglieder, Gruppe durchlassen)", "inviteOnlyUnknown", -188)
+  flag("Einlader zusätzlich auf die Liste setzen", "inviteMute", -210)
 
-  head("Spam-Erkennung", -262)
-  flag("Spam automatisch eintragen", "spamOn", -284)
-  sub("Derselbe Text mehrfach in kurzer Zeit (Say, Yell, Flüstern, öffentliche Kanäle ohne Handel und Gruppensuche). Freunde, Gilde und Gruppe nie.", -302)
+  head("Spam-Erkennung", -240)
+  flag("Spam automatisch eintragen", "spamOn", -262)
+  sub("Derselbe Text mehrfach in kurzer Zeit (Say, Yell, Flüstern, öffentliche Kanäle ohne Handel und Gruppensuche). Freunde, Gilde und Gruppe nie.", -280)
   local s1 = Stepper(pg, "Wiederholungen bis zum Eintrag", function() return D().spamCount end, function(v) D().spamCount = v end, 2, 10, 1)
-  put(s1, -334)
+  put(s1, -312)
   local s2 = Stepper(pg, "Zeitraum", function() return D().spamWindow end, function(v) D().spamWindow = v end, 30, 600, 30,
     function(v) return v .. " s" end)
-  put(s2, -360)
+  put(s2, -338)
   local s3 = Stepper(pg, "Einträge laufen ab nach (0 = nie)", function() return D().spamExpireDays end, function(v) D().spamExpireDays = v end, 0, 90, 1,
     function(v) return v == 0 and "nie" or (v .. " Tage") end)
-  put(s3, -386)
-  flag("Auch Bot-Wellen: derselbe Text von mehreren Absendern", "spamWave", -416)
+  put(s3, -364)
+  flag("Auch Bot-Wellen: derselbe Text von mehreren Absendern", "spamWave", -394)
   local s4 = Stepper(pg, "Absender für eine Welle", function() return D().waveSenders end, function(v) D().waveSenders = v end, 2, 10, 1)
-  put(s4, -440)
+  put(s4, -418)
 end
 
 ---------------------------------------------------------------------------

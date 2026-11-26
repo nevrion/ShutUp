@@ -3,7 +3,7 @@
 ## Notes: One ignore list for all your characters: add players or whole guilds, hide their chat, auto-block spam, decline guild invites. Window: /shutup
 ## Notes-deDE: Eine Ignore-Liste für alle Charaktere: Spieler oder ganze Gilden eintragen, Chat ausblenden, Spam automatisch blocken, Gildeneinladungen ablehnen. Fenster: /shutup
 ## Author: nevrion
-## Version: 0.4.0
+## Version: 0.4.1
 ## IconTexture: Interface\AddOns\ShutUp\media\icon.tga
 ## X-License: MIT
 ## X-Website: https://github.com/nevrion/ShutUp
